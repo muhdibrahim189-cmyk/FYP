@@ -136,7 +136,7 @@ def render_sidebar_user() -> None:
     st.sidebar.markdown("---")
     st.sidebar.markdown(
         f"**{user['avatar']} {user['name']}**  \n"
-        f"<span style='font-size:0.78rem;color:#64748b;font-weight:500;'>"
+        f"<span style='font-size:0.78rem;color:var(--ct-muted);font-weight:500;'>"
         f"{ROLE_LABELS.get(st.session_state.role, '')}</span>",
         unsafe_allow_html=True,
     )
@@ -154,8 +154,8 @@ def _render_login_page() -> None:
             f"""
             <div style='text-align:center;margin-bottom:2rem;'>
               <span style='font-size:3rem;'>{APP_PAGE_ICON}</span>
-              <h1 style='color:#1E3A8A;margin:0;font-size:2rem;font-weight:700;'>{APP_NAME}</h1>
-              <p style='color:#64748b;margin:0.2rem 0 0;font-size:0.92rem;'>Digital Carbon Accounting Platform</p>
+              <h1 style='color:var(--ct-heading);margin:0;font-size:2rem;font-weight:700;'>{APP_NAME}</h1>
+              <p style='color:var(--ct-muted);margin:0.2rem 0 0;font-size:0.92rem;'>Digital Carbon Accounting Platform</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -172,11 +172,11 @@ def _render_login_page() -> None:
 
         st.markdown(
             """
-            <div style='text-align:center;margin-top:1.5rem;color:#64748b;font-size:0.78rem;'>
+            <div style='text-align:center;margin-top:1.5rem;color:var(--ct-muted);font-size:0.78rem;'>
             Demo credentials: &nbsp;
-            <code style='background:#e2e8f0;padding:2px 6px;border-radius:4px;color:#1e293b;'>admin / admin123</code> &nbsp;|&nbsp;
-            <code style='background:#e2e8f0;padding:2px 6px;border-radius:4px;color:#1e293b;'>manager / mgr123</code> &nbsp;|&nbsp;
-            <code style='background:#e2e8f0;padding:2px 6px;border-radius:4px;color:#1e293b;'>user / user123</code>
+            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>admin / admin123</code> &nbsp;|&nbsp;
+            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>manager / mgr123</code> &nbsp;|&nbsp;
+            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>user / user123</code>
             </div>
             """,
             unsafe_allow_html=True,

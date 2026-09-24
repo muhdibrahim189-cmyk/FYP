@@ -18,7 +18,7 @@ from data.emission_factors import ALL_FACTORS, FACILITIES, SCOPE1_SOURCES, SCOPE
 from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
-from utils.charts import AMBER, BLUE, NAVY, RED, apply_layout
+from utils.charts import AMBER, BLUE, HEADING, RED, apply_layout
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
 from utils.data_manager import (
     approve_submission, load_activity_log, load_all_pending, load_database_emissions,
@@ -30,14 +30,14 @@ logger = logging.getLogger(__name__)
 
 SUBMISSION_STATUS_ICONS = {"approved": "✅", "pending": "⏳", "rejected": "❌"}
 ACTION_STYLES = {                       # action -> (colour, icon)
-    "SUBMITTED_APPROVED": ("#15803d", "✅"),
-    "SUBMITTED_PENDING":  ("#c2410c", "⚠️"),
+    "SUBMITTED_APPROVED": ("var(--ct-ok-text)", "✅"),
+    "SUBMITTED_PENDING":  ("var(--ct-alert-text)", "⚠️"),
     "APPROVED":           ("#2563EB", "👍"),
     "REJECTED":           ("#b91c1c", "🚫"),
     "LOGIN":              ("#7c3aed", "🔑"),
-    "LOGOUT":             ("#64748b", "🚪"),
+    "LOGOUT":             ("var(--ct-muted)", "🚪"),
 }
-DEFAULT_ACTION_STYLE = ("#64748b", "•")
+DEFAULT_ACTION_STYLE = ("var(--ct-muted)", "•")
 SUSTAINABILITY_TARGETS = (             # (name, deadline, status, progress %)
     ("Net Zero by 2050",        "Long-term goal", "Planning",    15),
     ("30% Scope 2 Reduction",   "By end of 2027", "In Progress", 42),
@@ -59,12 +59,12 @@ class Sustainability(Page):
         self.pending_records = load_pending()
         if not self.pending_records.empty and self.can_approve:
             st.markdown(f"""
-            <div style='background:#fefce8;border:1px solid #fde047;border-left:4px solid #ca8a04;
+            <div style='background:var(--ct-warn-bg);border:1px solid var(--ct-warn-border);border-left:4px solid #ca8a04;
                 border-radius:10px;padding:0.75rem 1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.8rem;'>
               <span style='font-size:1.3rem;'>⚠️</span>
               <div>
-                <span style='color:#a16207;font-weight:700;'>{len(self.pending_records)} submission(s) awaiting your approval</span>
-                <div style='color:#713f12;font-size:0.8rem;'>Review and authorize or reject flagged entries in the Approval Queue tab below.</div>
+                <span style='color:var(--ct-warn-text);font-weight:700;'>{len(self.pending_records)} submission(s) awaiting your approval</span>
+                <div style='color:var(--ct-warn-text-soft);font-size:0.8rem;'>Review and authorize or reject flagged entries in the Approval Queue tab below.</div>
               </div>
             </div>""", unsafe_allow_html=True)
 
@@ -84,11 +84,11 @@ class Sustainability(Page):
     @staticmethod
     def render_co2e_preview(co2e_kg: float) -> None:
         st.markdown(f"""
-        <div style='background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #2563EB;
+        <div style='background:var(--ct-surface-alt);border:1px solid var(--ct-border);border-left:4px solid #2563EB;
             border-radius:8px;padding:0.7rem 0.9rem;margin-top:0.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.02);'>
-          <div style='color:#64748b;font-size:0.72rem;font-weight:600;text-transform:uppercase;'>Estimated CO₂e Calculation</div>
-          <div style='color:#1E3A8A;font-size:1.35rem;font-weight:700;font-family:Outfit,sans-serif;'>{co2e_kg:,.2f} kg</div>
-          <div style='color:#64748b;font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):.4f} tonnes ·
+          <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;'>Estimated CO₂e Calculation</div>
+          <div style='color:var(--ct-heading);font-size:1.35rem;font-weight:700;font-family:Outfit,sans-serif;'>{co2e_kg:,.2f} kg</div>
+          <div style='color:var(--ct-muted);font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):.4f} tonnes ·
             Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}</div>
         </div>""", unsafe_allow_html=True)
 
@@ -143,10 +143,10 @@ class Sustainability(Page):
             "Inputs deviating significantly from historical distributions are intercepted for managerial verification."
         )
         st.markdown("""
-        <div style='background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid #2563EB;
-            border-radius:10px;padding:0.85rem 1.1rem;margin-bottom:1.2rem;color:#334155;font-size:0.84rem;'>
+        <div style='background:var(--ct-info-bg);border:1px solid var(--ct-info-border);border-left:4px solid #2563EB;
+            border-radius:10px;padding:0.85rem 1.1rem;margin-bottom:1.2rem;color:var(--ct-text-body);font-size:0.84rem;'>
         ℹ️ <strong>Validation Protocol:</strong> All entries are automatically scored against historical standard deviations.
-        Outlier quantities will be <strong style='color:#c2410c;'>flagged as potential anomalies</strong> and routed to an authorized supervisor for audit sign-off.
+        Outlier quantities will be <strong style='color:var(--ct-alert-text);'>flagged as potential anomalies</strong> and routed to an authorized supervisor for audit sign-off.
         </div>""", unsafe_allow_html=True)
 
         # Not wrapped in st.form: the source list and CO₂e preview must react to
@@ -191,31 +191,31 @@ class Sustainability(Page):
     @staticmethod
     def render_pending_card(row: pd.Series) -> None:
         notes_html = (
-            f"<div style='color:#475569;font-size:0.75rem;margin-top:0.4rem;'>📄 Notes: {escape(str(row['notes']))}</div>"
+            f"<div style='color:var(--ct-text-soft);font-size:0.75rem;margin-top:0.4rem;'>📄 Notes: {escape(str(row['notes']))}</div>"
             if row.get("notes") else ""
         )
         st.markdown(f"""
         <div class='approval-card'>
           <div style='display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;'>
             <div class='anomaly-badge'>⚠️ Anomaly Flagged</div>
-            <span style='color:#64748b;font-size:0.75rem;font-weight:600;'>Entry ID #{int(row['id'])}</span>
+            <span style='color:var(--ct-muted);font-size:0.75rem;font-weight:600;'>Entry ID #{int(row['id'])}</span>
           </div>
-          <div style='color:#1E3A8A;font-weight:700;font-size:1.05rem;font-family:Outfit,sans-serif;'>
+          <div style='color:var(--ct-heading);font-weight:700;font-size:1.05rem;font-family:Outfit,sans-serif;'>
             {escape(str(row['source']))} — {escape(str(row['facility']))}
           </div>
-          <div style='color:#475569;font-size:0.84rem;margin-top:0.25rem;'>
+          <div style='color:var(--ct-text-soft);font-size:0.84rem;margin-top:0.25rem;'>
             Scope {int(row['scope'])} · <strong>{row['quantity']:,.2f} {escape(str(row['unit']))}</strong> ·
-            <span style='color:#1E3A8A;font-weight:700;'>{row['co2e_kg']:,.2f} kg CO₂e</span> ·
+            <span style='color:var(--ct-heading);font-weight:700;'>{row['co2e_kg']:,.2f} kg CO₂e</span> ·
             Tax Exposure: <strong>MYR {carbon_tax(row['co2e_kg']):,.2f}</strong>
           </div>
-          <div style='color:#64748b;font-size:0.75rem;margin-top:0.35rem;'>
+          <div style='color:var(--ct-muted);font-size:0.75rem;margin-top:0.35rem;'>
             📅 Date of Activity: <strong>{escape(str(row['date']))}</strong> · 👤 Submitted by
             <strong style='color:#2563EB;'>{escape(str(row['submitted_by']))}</strong>
             at {escape(str(row['submitted_at'])[:16])}
           </div>
-          <div style='background:#fff7ed;border:1px solid #fdba74;border-left:4px solid #ea580c;
+          <div style='background:var(--ct-alert-bg);border:1px solid var(--ct-alert-border);border-left:4px solid #ea580c;
               border-radius:8px;padding:0.6rem 0.85rem;margin-top:0.6rem;'>
-            <span style='color:#c2410c;font-size:0.78rem;font-weight:600;'>
+            <span style='color:var(--ct-alert-text);font-size:0.78rem;font-weight:600;'>
               🔍 Anomaly Reason: {escape(str(row['anomaly_reason']))}
             </span>
           </div>
@@ -238,7 +238,7 @@ class Sustainability(Page):
             st.markdown("""
             <div style='text-align:center;padding:3rem;'>
               <span style='font-size:3rem;'>🔒</span>
-              <h3 style='color:#64748b;'>Access Restricted</h3>
+              <h3 style='color:var(--ct-muted);'>Access Restricted</h3>
               <p style='color:#94a3b8;'>Only managers and administrators can approve submissions.</p>
             </div>""", unsafe_allow_html=True)
             return
@@ -250,11 +250,11 @@ class Sustainability(Page):
         )
         if self.pending_records.empty:
             st.markdown("""
-            <div style='text-align:center;padding:2.5rem;background:#f0fdf4;
-                border:1px solid #bbf7d0;border-radius:12px;'>
+            <div style='text-align:center;padding:2.5rem;background:var(--ct-ok-bg);
+                border:1px solid var(--ct-ok-border-soft);border-radius:12px;'>
               <span style='font-size:2.5rem;'>✅</span>
-              <p style='color:#15803d;font-weight:700;font-size:1.05rem;margin:0.5rem 0 0;'>All clear! No pending submissions.</p>
-              <span style='color:#64748b;font-size:0.8rem;'>All submitted records have been verified and processed into the carbon ledger.</span>
+              <p style='color:var(--ct-ok-text);font-weight:700;font-size:1.05rem;margin:0.5rem 0 0;'>All clear! No pending submissions.</p>
+              <span style='color:var(--ct-muted);font-size:0.8rem;'>All submitted records have been verified and processed into the carbon ledger.</span>
             </div>""", unsafe_allow_html=True)
         else:
             for _, row in self.pending_records.iterrows():
@@ -315,7 +315,7 @@ class Sustainability(Page):
             shown = filtered.head(ACTIVITY_LOG_DISPLAY_LIMIT)
             for _, row in shown.iterrows():
                 self.render_log_row(row)
-            st.markdown(f"<div style='color:#64748b;font-size:0.75rem;text-align:right;margin-top:0.5rem;'>"
+            st.markdown(f"<div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;margin-top:0.5rem;'>"
                         f"Showing {len(shown)} of {len(filtered)} log entries</div>", unsafe_allow_html=True)
 
             st.download_button(
@@ -381,15 +381,15 @@ class Sustainability(Page):
             <div class='ct-card' style='padding:0.9rem 1.3rem;margin:0.4rem 0;'>
               <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;'>
                 <div>
-                  <span style='color:#1e293b;font-weight:700;font-size:0.95rem;font-family:Outfit,sans-serif;'>{name}</span>
-                  <span style='color:#64748b;font-size:0.78rem;margin-left:0.6rem;'>· {deadline}</span>
+                  <span style='color:var(--ct-text);font-weight:700;font-size:0.95rem;font-family:Outfit,sans-serif;'>{name}</span>
+                  <span style='color:var(--ct-muted);font-size:0.78rem;margin-left:0.6rem;'>· {deadline}</span>
                 </div>
                 <div class='{self.target_badge_class(status)}'>{status}</div>
               </div>
-              <div style='background:#e2e8f0;border-radius:10px;height:7px;overflow:hidden;'>
+              <div style='background:var(--ct-border);border-radius:10px;height:7px;overflow:hidden;'>
                 <div style='width:{progress}%;background:{bar_color};height:100%;border-radius:10px;transition:width 0.5s;'></div>
               </div>
-              <div style='color:#64748b;font-size:0.75rem;margin-top:0.35rem;text-align:right;font-weight:600;'>{progress}% achieved</div>
+              <div style='color:var(--ct-muted);font-size:0.75rem;margin-top:0.35rem;text-align:right;font-weight:600;'>{progress}% achieved</div>
             </div>""", unsafe_allow_html=True)
 
     def render_metrics_tab(self) -> None:
@@ -403,7 +403,7 @@ class Sustainability(Page):
         status_counts = history["status"].value_counts() if not history.empty else pd.Series(dtype=int)
 
         metrics = (
-            ("Total Records", f"{len(ledger):,}", "approved entries", NAVY),
+            ("Total Records", f"{len(ledger):,}", "approved entries", HEADING),
             ("Flagged & Approved", f"{status_counts.get('approved', 0):,}", "anomalies approved", AMBER),
             ("Submissions Rejected", f"{status_counts.get('rejected', 0):,}", "anomalies rejected", RED),
             ("Active Contributors", f"{ledger['submitted_by'].nunique() if not ledger.empty else 0}",

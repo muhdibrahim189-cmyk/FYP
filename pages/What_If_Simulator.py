@@ -8,7 +8,7 @@ import streamlit as st
 from utils.ai_helper import chat_response, get_whatif_recommendation
 from utils.analytics import scope_totals
 from utils.carbon_calculator import KG_PER_TONNE, carbon_tax, kg_to_tonnes, share_pct
-from utils.charts import AMBER, BLUE, GREEN, GRID_AXIS, NAVY, RED, apply_layout
+from utils.charts import AMBER, BLUE, GREEN, GRID_AXIS, HEADING, RED, apply_layout
 from utils.config import GEMINI_MODEL_LABEL
 from utils.simulation import SCOPE1_LEVERS, SCOPE2_LEVERS, Lever, describe_changes, simulate_emissions
 from utils.ui import Page
@@ -79,10 +79,10 @@ class WhatIfSimulator(Page):
         <div class='ct-card' style='margin-bottom:0.4rem;padding:0.9rem 1.2rem;'>
           <div style='display:flex;justify-content:space-between;align-items:center;'>
             <div>
-              <div style='color:#64748b;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;'>{label}</div>
+              <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;'>{label}</div>
               <div style='color:{color};font-size:1.35rem;font-weight:700;margin-top:0.15rem;font-family:Outfit,sans-serif;'>{value}</div>
             </div>
-            <div style='color:#64748b;font-size:0.75rem;text-align:right;'>{sub}</div>
+            <div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;'>{sub}</div>
           </div>
         </div>""", unsafe_allow_html=True)
 
@@ -93,7 +93,7 @@ class WhatIfSimulator(Page):
         arrow_color = GREEN if reduction_kg > 0 else RED
         results = (
             ("Simulated Total CO₂e", f"{kg_to_tonnes(simulated.total_kg):,.1f} t",
-             f"Baseline: {kg_to_tonnes(baseline.total_kg):,.1f} t", NAVY),
+             f"Baseline: {kg_to_tonnes(baseline.total_kg):,.1f} t", HEADING),
             ("Emission Reduction", f"{arrow} {self.reduction_pct:.1f}%",
              f"{kg_to_tonnes(abs(reduction_kg)):,.1f} tonnes saved", arrow_color),
             ("New Tax Liability", f"MYR {carbon_tax(simulated.total_kg):,.0f}",

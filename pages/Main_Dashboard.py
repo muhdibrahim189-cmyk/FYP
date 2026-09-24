@@ -20,7 +20,7 @@ from utils.carbon_calculator import (
     carbon_tax, emission_intensity_employee, emission_intensity_revenue, kg_to_tonnes, share_pct,
 )
 from utils.charts import (
-    AMBER, BLUE, GRID_AXIS, NAVY, ORANGE, PURPLE, RED, SCOPE_COLORS, apply_layout,
+    AMBER, BLUE, HEADING, ORANGE, PURPLE, RED, SCOPE_COLORS, apply_layout,
 )
 from utils.config import ALL_OPTION, FORECAST_MONTHS, GEMINI_MODEL_LABEL
 from utils.data_manager import load_emissions
@@ -106,7 +106,7 @@ class MainDashboard(Page):
 
         cards = (
             ("Total CO₂e", f"{self.total_t:,.1f}", "tonnes",
-             f"{delta_icon} {abs(change_pct):.1f}% vs prior period", delta_class, NAVY),
+             f"{delta_icon} {abs(change_pct):.1f}% vs prior period", delta_class, HEADING),
             ("Scope 1", f"{self.s1_t:,.1f}", "tonnes CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
             ("Scope 2", f"{self.s2_t:,.1f}", "tonnes CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
             ("Carbon Tax", f"MYR {self.tax_liab:,.0f}", f"@ MYR {self.tax_rate:.0f}/t",
@@ -161,14 +161,14 @@ class MainDashboard(Page):
         st.markdown(f"""
         <div style='display:flex;justify-content:space-between;align-items:center;
             padding:0.6rem 0.9rem;margin:0.35rem 0;border-radius:8px;
-            background:#ffffff;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);'>
+            background:var(--ct-surface);border:1px solid var(--ct-border);box-shadow:0 1px 2px rgba(0,0,0,0.03);'>
           <div>
             <span style='background:{badge_color}18;color:{badge_color};font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:4px;'>S{row["scope"]}</span>
-            <span style='color:#1e293b;font-size:0.84rem;font-weight:600;margin-left:0.4rem;'>{escape(str(row["source"]))}</span>
+            <span style='color:var(--ct-text);font-size:0.84rem;font-weight:600;margin-left:0.4rem;'>{escape(str(row["source"]))}</span>
           </div>
           <div style='text-align:right;'>
-            <span style='color:#1E3A8A;font-weight:700;font-size:0.88rem;'>{row["co2e_tonnes"]:,.1f}t</span>
-            <span style='color:#64748b;font-size:0.75rem;margin-left:0.3rem;'>({share_pct(row["co2e_tonnes"], total_tonnes):.1f}%)</span>
+            <span style='color:var(--ct-heading);font-weight:700;font-size:0.88rem;'>{row["co2e_tonnes"]:,.1f}t</span>
+            <span style='color:var(--ct-muted);font-size:0.75rem;margin-left:0.3rem;'>({share_pct(row["co2e_tonnes"], total_tonnes):.1f}%)</span>
           </div>
         </div>""", unsafe_allow_html=True)
 
@@ -183,7 +183,7 @@ class MainDashboard(Page):
             title="CO₂e Distribution by Emission Source",
         )
         apply_layout(fig, 430)
-        fig.update_traces(textposition="outside", textinfo="percent+label", textfont_color="#1e293b")
+        fig.update_traces(textposition="outside", textinfo="percent+label")
 
         c_left, c_right = st.columns([1.2, 1])
         with c_left:
@@ -237,21 +237,21 @@ class MainDashboard(Page):
         ), secondary_y=False)
         fig.add_trace(go.Scatter(
             x=monthly_total["month"], y=monthly_total["cumulative_tax"],
-            name="Cumulative Tax (MYR)", line=dict(color=NAVY, width=2.5), mode="lines+markers",
+            name="Cumulative Tax (MYR)", line=dict(color=BLUE, width=2.5), mode="lines+markers",
         ), secondary_y=True)
         apply_layout(fig, 380, title=f"Carbon Tax Liability @ MYR {tax_rate:.0f}/tonne CO₂e")
-        fig.update_yaxes(title_text="Monthly MYR", secondary_y=False, gridcolor=GRID_AXIS["gridcolor"])
-        fig.update_yaxes(title_text="Cumulative MYR", secondary_y=True, gridcolor=GRID_AXIS["gridcolor"])
+        fig.update_yaxes(title_text="Monthly MYR", secondary_y=False)
+        fig.update_yaxes(title_text="Cumulative MYR", secondary_y=True)
         st.plotly_chart(fig, width="stretch")
 
         st.markdown(f"""
-        <div style='background:#ffffff;border:1px solid #fecaca;border-left:4px solid #dc2626;
+        <div style='background:var(--ct-surface);border:1px solid var(--ct-danger-border);border-left:4px solid #dc2626;
             border-radius:10px;padding:1rem 1.4rem;margin-top:0.5rem;box-shadow:0 1px 3px rgba(0,0,0,0.03);'>
           <div style='color:#dc2626;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'>
             Total Estimated Carbon Tax Liability
           </div>
-          <div style='color:#1E3A8A;font-size:1.8rem;font-weight:700;margin-top:0.2rem;font-family:Outfit,sans-serif;'>MYR {monthly_total['tax_myr'].sum():,.2f}</div>
-          <div style='color:#64748b;font-size:0.75rem;'>Based on filtered period · Statutory reference rate: MYR {tax_rate:.0f} / tonne CO₂e</div>
+          <div style='color:var(--ct-heading);font-size:1.8rem;font-weight:700;margin-top:0.2rem;font-family:Outfit,sans-serif;'>MYR {monthly_total['tax_myr'].sum():,.2f}</div>
+          <div style='color:var(--ct-muted);font-size:0.75rem;'>Based on filtered period · Statutory reference rate: MYR {tax_rate:.0f} / tonne CO₂e</div>
         </div>""", unsafe_allow_html=True)
         self.observation("Financial liability scales linearly with tonnage. Early decarbonization initiatives directly mitigate bottom-line tax risks.")
 

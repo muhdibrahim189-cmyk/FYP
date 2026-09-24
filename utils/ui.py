@@ -20,62 +20,95 @@ FONT_IMPORT = (
     "&family=Inter:wght@300;400;500;600;700&display=swap');"
 )
 
+# Colours are tokens resolved with light-dark(): Streamlit sets ``color-scheme``
+# on the app root from the viewer's theme (Settings → Light / Dark / System,
+# defaulting to the device setting), so every custom style follows it.
 GLOBAL_CSS = """
+:root {
+    --ct-bg: light-dark(#f0f2f6, #0e1117);
+    --ct-surface: light-dark(#ffffff, #1a1f2b);
+    --ct-surface-alt: light-dark(#f8fafc, #202634);
+    --ct-surface-sunken: light-dark(#f1f5f9, #262d3d);
+    --ct-border: light-dark(#e2e8f0, #2d3748);
+    --ct-border-strong: light-dark(#cbd5e1, #475569);
+    --ct-heading: light-dark(#1E3A8A, #93c5fd);
+    --ct-text: light-dark(#1e293b, #e2e8f0);
+    --ct-text-strong: light-dark(#0f172a, #f8fafc);
+    --ct-text-body: light-dark(#334155, #cbd5e1);
+    --ct-text-soft: light-dark(#475569, #b6c2d1);
+    --ct-muted: light-dark(#64748b, #94a3b8);
+    --ct-info-bg: light-dark(#eff6ff, rgba(37,99,235,0.12));
+    --ct-info-bg-strong: light-dark(#dbeafe, rgba(37,99,235,0.22));
+    --ct-info-border: light-dark(#bfdbfe, rgba(96,165,250,0.35));
+    --ct-info-text: light-dark(#1e40af, #bfdbfe);
+    --ct-warn-bg: light-dark(#fefce8, rgba(234,179,8,0.12));
+    --ct-warn-border: light-dark(#fde047, rgba(234,179,8,0.45));
+    --ct-warn-text: light-dark(#a16207, #facc15);
+    --ct-warn-text-soft: light-dark(#713f12, #fde68a);
+    --ct-alert-bg: light-dark(#fff7ed, rgba(234,88,12,0.12));
+    --ct-alert-border: light-dark(#fdba74, rgba(234,88,12,0.45));
+    --ct-alert-text: light-dark(#c2410c, #fdba74);
+    --ct-ok-bg: light-dark(#f0fdf4, rgba(22,163,74,0.12));
+    --ct-ok-border: light-dark(#86efac, rgba(22,163,74,0.45));
+    --ct-ok-border-soft: light-dark(#bbf7d0, rgba(22,163,74,0.35));
+    --ct-ok-text: light-dark(#15803d, #86efac);
+    --ct-danger-border: light-dark(#fecaca, rgba(220,38,38,0.45));
+}
 * { font-family: 'Inter', sans-serif; }
-[data-testid='stAppViewContainer'] { background: #f0f2f6; min-height: 100vh; }
+[data-testid='stAppViewContainer'] { background: var(--ct-bg); min-height: 100vh; }
 .main .block-container { padding-top: 1.8rem; padding-bottom: 2rem; }
 
 h1, h2, h3 { font-family: 'Outfit', 'Inter', sans-serif !important; }
-h1 { color: #1E3A8A !important; font-weight: 700 !important; }
+h1 { color: var(--ct-heading) !important; font-weight: 700 !important; }
 h2 { color: #2563EB !important; font-weight: 600 !important; }
-h3 { color: #1e293b !important; font-weight: 600 !important; }
+h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 
 /* Sidebar (the default page list is replaced by our own selectbox) */
-[data-testid='stSidebar'] { background: #ffffff !important; border-right: 1px solid #e2e8f0 !important; }
+[data-testid='stSidebar'] { background: var(--ct-surface) !important; border-right: 1px solid var(--ct-border) !important; }
 [data-testid='stSidebarNav'] { display: none !important; }
-[data-testid='stSidebar'] * { color: #1e293b !important; }
+[data-testid='stSidebar'] * { color: var(--ct-text) !important; }
 
 .stAlert, [data-testid='stAlert'] { border-radius: 8px !important; }
 
 /* Cards */
 .ct-card {
-    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+    background: var(--ct-surface); border: 1px solid var(--ct-border); border-radius: 12px;
     padding: 1.1rem 1.2rem; transition: all 0.2s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 .ct-card:hover { border-color: #93c5fd; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37,99,235,0.08); }
 .ct-card-value {
-    font-size: 1.85rem; font-weight: 700; color: #1E3A8A; margin: 0.2rem 0;
+    font-size: 1.85rem; font-weight: 700; color: var(--ct-heading); margin: 0.2rem 0;
     line-height: 1.1; font-family: 'Outfit', sans-serif;
 }
 .ct-card-label {
-    font-size: 0.72rem; color: #64748b; text-transform: uppercase;
+    font-size: 0.72rem; color: var(--ct-muted); text-transform: uppercase;
     letter-spacing: 0.06em; font-weight: 600;
 }
-.ct-card-sub { color: #64748b; font-size: 0.72rem; }
+.ct-card-sub { color: var(--ct-muted); font-size: 0.72rem; }
 .ct-card-delta { font-size: 0.78rem; font-weight: 500; margin-top: 0.3rem; }
 .delta-up   { color: #dc2626; }
 .delta-down { color: #16a34a; }
-.delta-neu  { color: #64748b; }
+.delta-neu  { color: var(--ct-muted); }
 
 .ct-section-title {
-    font-size: 1.15rem; font-weight: 700; color: #1E3A8A; border-left: 4px solid #2563EB;
+    font-size: 1.15rem; font-weight: 700; color: var(--ct-heading); border-left: 4px solid #2563EB;
     padding-left: 0.7rem; margin: 1.4rem 0 0.8rem; font-family: 'Outfit', sans-serif;
 }
 .sim-card {
-    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
+    background: var(--ct-surface); border: 1px solid var(--ct-border); border-radius: 10px;
     padding: 1rem 1.2rem; margin: 0.4rem 0; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 .approval-card {
-    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.1rem 1.3rem;
+    background: var(--ct-surface); border: 1px solid var(--ct-border); border-radius: 12px; padding: 1.1rem 1.3rem;
     margin: 0.6rem 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.2s ease;
 }
 .approval-card:hover { border-color: #93c5fd; box-shadow: 0 4px 12px rgba(37,99,235,0.06); }
 
 /* AI badge */
 .ai-badge {
-    display: inline-flex; align-items: center; gap: 6px; background: #dbeafe;
+    display: inline-flex; align-items: center; gap: 6px; background: var(--ct-info-bg-strong);
     border: 1px solid #93c5fd; border-radius: 20px; padding: 4px 12px; font-size: 0.75rem;
-    font-weight: 600; color: #1e40af; text-transform: uppercase; letter-spacing: 0.05em;
+    font-weight: 600; color: var(--ct-info-text); text-transform: uppercase; letter-spacing: 0.05em;
     margin-bottom: 0.7rem;
 }
 
@@ -84,24 +117,24 @@ h3 { color: #1e293b !important; font-weight: 600 !important; }
     display: inline-flex; align-items: center; gap: 5px; border-radius: 20px;
     padding: 3px 10px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
 }
-.anomaly-badge  { background: #fff7ed; border: 1px solid #fdba74; color: #c2410c; }
-.approved-badge { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
-.pending-badge  { background: #fefce8; border: 1px solid #fde047; color: #a16207; }
+.anomaly-badge  { background: var(--ct-alert-bg); border: 1px solid var(--ct-alert-border); color: var(--ct-alert-text); }
+.approved-badge { background: var(--ct-ok-bg); border: 1px solid var(--ct-ok-border); color: var(--ct-ok-text); }
+.pending-badge  { background: var(--ct-warn-bg); border: 1px solid var(--ct-warn-border); color: var(--ct-warn-text); }
 
 /* Activity log rows */
 .log-row {
     display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0.85rem; margin: 0.25rem 0;
-    border-radius: 8px; background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    border-radius: 8px; background: var(--ct-surface); border: 1px solid var(--ct-border); box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
-.log-timestamp { color: #64748b; font-size: 0.74rem; min-width: 130px; font-family: monospace; }
+.log-timestamp { color: var(--ct-muted); font-size: 0.74rem; min-width: 130px; font-family: monospace; }
 .log-user { color: #2563EB; font-size: 0.78rem; font-weight: 600; min-width: 80px; }
 .log-action { font-size: 0.78rem; font-weight: 600; min-width: 140px; }
-.log-details { color: #334155; font-size: 0.76rem; flex: 1; }
+.log-details { color: var(--ct-text-body); font-size: 0.76rem; flex: 1; }
 
 /* Tabs */
-[data-testid='stTabs'] [role='tab'] { color: #64748b; font-family: 'Outfit', sans-serif; font-weight: 500; }
+[data-testid='stTabs'] [role='tab'] { color: var(--ct-muted); font-family: 'Outfit', sans-serif; font-weight: 500; }
 [data-testid='stTabs'] [role='tab'][aria-selected='true'] {
-    color: #1E3A8A !important; border-bottom-color: #2563EB !important; font-weight: 700;
+    color: var(--ct-heading) !important; border-bottom-color: #2563EB !important; font-weight: 700;
 }
 
 /* Buttons */
@@ -113,10 +146,10 @@ h3 { color: #1e293b !important; font-weight: 600 !important; }
     background: #1d4ed8 !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3) !important;
 }
 .stButton > button[kind='secondary'] {
-    background: #ffffff !important; border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important; color: #334155 !important;
+    background: var(--ct-surface) !important; border: 1px solid var(--ct-border-strong) !important;
+    border-radius: 8px !important; color: var(--ct-text-body) !important;
 }
-.stButton > button[kind='secondary']:hover { background: #f8fafc !important; border-color: #94a3b8 !important; }
+.stButton > button[kind='secondary']:hover { background: var(--ct-surface-alt) !important; border-color: #94a3b8 !important; }
 
 /* Inputs */
 .stTextInput > div > div > input,
@@ -125,24 +158,24 @@ h3 { color: #1e293b !important; font-weight: 600 !important; }
 .stMultiSelect > div > div,
 .stDateInput > div > div > input,
 .stTextArea > div > div > textarea {
-    background: #ffffff !important; border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important; color: #0f172a !important;
+    background: var(--ct-surface) !important; border: 1px solid var(--ct-border-strong) !important;
+    border-radius: 8px !important; color: var(--ct-text-strong) !important;
 }
 
 /* Tables */
-.stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
-[data-testid='stDataFrame'] th { background: #f1f5f9 !important; color: #1E3A8A !important; font-weight: 600 !important; }
+.stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid var(--ct-border); }
+[data-testid='stDataFrame'] th { background: var(--ct-surface-sunken) !important; color: var(--ct-heading) !important; font-weight: 600 !important; }
 
 /* Chat */
 [data-testid='stChatMessage'] {
-    background: #ffffff !important; border-radius: 12px !important;
-    border: 1px solid #e2e8f0 !important; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    background: var(--ct-surface) !important; border-radius: 12px !important;
+    border: 1px solid var(--ct-border) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
-hr { border-color: #e2e8f0 !important; }
+hr { border-color: var(--ct-border) !important; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--ct-border-strong); border-radius: 3px; }
 """
 
 
@@ -198,7 +231,7 @@ class Page:
             f"""
             <div style='padding:0.3rem 0 0.8rem;text-align:center;'>
               <span style='font-size:1.8rem;'>{APP_PAGE_ICON}</span>
-              <div style='font-size:1.1rem;font-weight:700;color:#1E3A8A;font-family:Outfit,sans-serif;'>{APP_NAME}</div>
+              <div style='font-size:1.1rem;font-weight:700;color:var(--ct-heading);font-family:Outfit,sans-serif;'>{APP_NAME}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -237,8 +270,8 @@ class Page:
         st.markdown(
             f"""
             <div style='margin-bottom:1.2rem;'>
-              <h1 style='color:#1E3A8A;font-size:2rem;font-weight:800;margin:0;font-family:Outfit,sans-serif;'>{title}</h1>
-              <p style='color:#64748b;font-size:0.9rem;margin:0.2rem 0 0;'>{subtitle}</p>
+              <h1 style='color:var(--ct-heading);font-size:2rem;font-weight:800;margin:0;font-family:Outfit,sans-serif;'>{title}</h1>
+              <p style='color:var(--ct-muted);font-size:0.9rem;margin:0.2rem 0 0;'>{subtitle}</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -268,7 +301,7 @@ class Page:
 
     @staticmethod
     def muted_text(text: str, size: str = "0.85rem") -> None:
-        st.markdown(f"<div style='color:#64748b;font-size:{size};'>{text}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:var(--ct-muted);font-size:{size};'>{text}</div>", unsafe_allow_html=True)
 
     @staticmethod
     def observation(text: str, title: str = "Observations") -> None:
@@ -299,6 +332,6 @@ class Page:
             f"Malaysia Grid {PENINSULAR_GRID_FACTOR} kg CO₂e/kWh"
         )
         st.markdown(
-            f"<div style='text-align:center;color:#64748b;font-size:0.75rem;padding:1.5rem 0 0;'>{text}</div>",
+            f"<div style='text-align:center;color:var(--ct-muted);font-size:0.75rem;padding:1.5rem 0 0;'>{text}</div>",
             unsafe_allow_html=True,
         )

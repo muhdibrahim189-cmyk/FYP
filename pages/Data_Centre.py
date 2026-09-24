@@ -12,7 +12,7 @@ import streamlit as st
 from data.emission_factors import CARBON_TAX_RATE_MYR
 from utils.analytics import filter_emissions, grouped_tonnes, scope_totals, search_rows, to_safe_csv
 from utils.carbon_calculator import KG_PER_TONNE, carbon_tax, share_pct
-from utils.charts import AMBER, BLUE, NAVY, RED, SCOPE_COLORS, SCOPE_LABEL_COLORS, apply_layout
+from utils.charts import AMBER, BLUE, HEADING, RED, SCOPE_COLORS, SCOPE_LABEL_COLORS, apply_layout
 from utils.config import ALL_OPTION, DATA_TABLE_PAGE_SIZE, STATUS_LABELS
 from utils.ui import Page
 
@@ -93,7 +93,7 @@ class DataCentre(Page):
         totals = scope_totals(self.df)
         s1_pct = share_pct(totals.scope1_kg, totals.total_kg)
         stats = (
-            ("Records Found", f"{len(self.df):,}", f"of {len(self.df_raw):,} total", NAVY),
+            ("Records Found", f"{len(self.df):,}", f"of {len(self.df_raw):,} total", HEADING),
             ("Filtered CO₂e", f"{totals.total_kg / KG_PER_TONNE:,.1f} t", "tonnes CO₂e", BLUE),
             ("Estimated Carbon Tax", f"MYR {carbon_tax(totals.total_kg):,.0f}", f"@ MYR {CARBON_TAX_RATE_MYR:.0f}/t", RED),
             ("Scope 1 Share", f"{s1_pct:.1f}%", "direct emissions", AMBER),
@@ -128,7 +128,7 @@ class DataCentre(Page):
         start = (page - 1) * DATA_TABLE_PAGE_SIZE
         st.dataframe(table.iloc[start:start + DATA_TABLE_PAGE_SIZE].reset_index(drop=True),
                      width="stretch", height=450)
-        st.markdown(f"<div style='color:#64748b;font-size:0.75rem;text-align:right;'>Page {page} of {total_pages}</div>",
+        st.markdown(f"<div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;'>Page {page} of {total_pages}</div>",
                     unsafe_allow_html=True)
         self.observation("Use column headers to sort tabular data. All records are verifiable against audit log events.")
 
@@ -167,8 +167,7 @@ class DataCentre(Page):
                 color="label", color_discrete_map=SCOPE_LABEL_COLORS,
             )
             apply_layout(fig_donut, 280)
-            fig_donut.update_traces(textfont_color="#1e293b")
-            st.plotly_chart(fig_donut, width="stretch")
+                st.plotly_chart(fig_donut, width="stretch")
 
             by_facility = grouped_tonnes(df, ["facility", "source"])
             fig_tree = px.treemap(
@@ -206,7 +205,7 @@ class DataCentre(Page):
         with col_info:
             st.markdown(f"""
             <div class='ct-card' style='padding:0.8rem 1rem;'>
-              <div style='color:#64748b;font-size:0.75rem;'>
+              <div style='color:var(--ct-muted);font-size:0.75rem;'>
                 📋 {len(export_df):,} records ·
                 {export_df['co2e_tonnes'].sum():,.1f} tCO₂e ·
                 {export_df['date'].min()} to {export_df['date'].max()}

@@ -32,7 +32,7 @@ SCOPE_FILL_COLORS = {1: "rgba(217,119,6,0.06)", 2: "rgba(37,99,235,0.06)"}
 class MainDashboard(Page):
     name = "Dashboard"
     icon = "📊"
-    nav_label = "📊 Main Dashboard"
+    nav_label = "Main Dashboard"
     header = (
         "📊 Emission Dashboard",
         "Scope 1 & 2 GHG Protocol Monitoring · Real-time Operational Insights · Carbon Tax Liability",

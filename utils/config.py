@@ -12,20 +12,20 @@ APP_PAGE_ICON = "🌿"
 
 # ── Navigation ────────────────────────────────────────────────────────────────
 PAGE_ROUTES = {
-    "📊 Main Dashboard": "pages/Main_Dashboard.py",
-    "🔬 What-If Simulator": "pages/What_If_Simulator.py",
-    "🗄️ Data Centre": "pages/Data_Centre.py",
-    "♻️ Sustainability": "pages/Sustainability.py",
+    "Main Dashboard": "pages/Main_Dashboard.py",
+    "What-If Simulator": "pages/What_If_Simulator.py",
+    "Data Centre": "pages/Data_Centre.py",
+    "Sustainability": "pages/Sustainability.py",
 }
 # Default page of the router in app.py: where users land after signing in.
-DEFAULT_PAGE = "📊 Main Dashboard"
+DEFAULT_PAGE = "Main Dashboard"
 NAVIGATION_OPTIONS = tuple(PAGE_ROUTES)
 
 # ── AI (Google Gemini) ────────────────────────────────────────────────────────
 # Secrets come from the environment only; never hard-code the key.
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
-GEMINI_MODEL_NAME = "gemini-1.5-flash"
-GEMINI_MODEL_LABEL = "Gemini 1.5 Flash"
+GEMINI_MODEL_NAME = "gemini-2.5-flash"
+GEMINI_MODEL_LABEL = "Gemini 2.5 Flash"
 
 # ── Database ──────────────────────────────────────────────────────────────────
 DB_TIMEOUT_SECONDS = 10

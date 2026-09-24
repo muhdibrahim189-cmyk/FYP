@@ -20,19 +20,16 @@ USERS = {
         "password": "admin123",
         "role":     "admin",
         "name":     "Ahmad Faris (Admin)",
-        "avatar":   "👑",
     },
     "manager": {
         "password": "mgr123",
         "role":     "manager",
         "name":     "Nurul Ain (Manager)",
-        "avatar":   "🏢",
     },
     "user": {
         "password": "user123",
         "role":     "data_entry",
         "name":     "Haziq Rahman (Data Entry)",
-        "avatar":   "📋",
     },
 }
 
@@ -135,7 +132,7 @@ def render_sidebar_user() -> None:
         return
     st.sidebar.markdown("---")
     st.sidebar.markdown(
-        f"**{user['avatar']} {user['name']}**  \n"
+        f"**{user['name']}**  \n"
         f"<span style='font-size:0.78rem;color:var(--ct-muted);font-weight:500;'>"
         f"{ROLE_LABELS.get(st.session_state.role, '')}</span>",
         unsafe_allow_html=True,
@@ -161,8 +158,8 @@ def _render_login_page() -> None:
             unsafe_allow_html=True,
         )
         with st.form("login_form"):
-            username = st.text_input("👤 Username", placeholder="admin / manager / user")
-            password = st.text_input("🔒 Password", type="password", placeholder="••••••••")
+            username = st.text_input("Username", placeholder="admin / manager / user")
+            password = st.text_input("Password", type="password", placeholder="••••••••")
             submitted = st.form_submit_button("Sign In", width="stretch", type="primary")
             if submitted:
                 if login(username.strip(), password.strip()):

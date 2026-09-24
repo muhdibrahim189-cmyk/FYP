@@ -24,7 +24,7 @@ CHAT_SUGGESTIONS = (
 class WhatIfSimulator(Page):
     name = "What-If Simulator"
     icon = "🔬"
-    nav_label = "🔬 What-If Simulator"
+    nav_label = "What-If Simulator"
     header = (
         "🔬 What-If Emission Scenario Simulator",
         "Dynamic Decarbonization Modeling · Multi-lever Sensitivity Projections · Automated Tax Impact Calculation",

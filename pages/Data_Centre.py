@@ -36,7 +36,7 @@ EXPORT_COLUMNS = (
 class DataCentre(Page):
     name = "Data Centre"
     icon = "🗄️"
-    nav_label = "🗄️ Data Centre"
+    nav_label = "Data Centre"
     header = (
         " Emission Data Repository",
         "Complete Historical Emission Ledger · Interactive Multidimensional Filtering · Audit-Ready Data Export",

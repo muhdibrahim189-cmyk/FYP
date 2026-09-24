@@ -51,7 +51,7 @@ SUSTAINABILITY_TARGETS = (             # (name, deadline, status, progress %)
 class Sustainability(Page):
     name = "Sustainability"
     icon = "♻️"
-    nav_label = "♻️ Sustainability"
+    nav_label = "Sustainability"
 
     def render(self) -> None:
         self.username = current_username()

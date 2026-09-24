@@ -4,7 +4,7 @@ ui.py – App bootstrap and the ``Page`` base class every page inherits from.
 Every value interpolated into raw HTML that can come from users, the database,
 the workbook or the AI model is passed through ``html.escape``.
 """
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from html import escape
 
 import pandas as pd
@@ -69,6 +69,15 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 [data-testid='stSidebar'] * { color: var(--ct-text) !important; }
 
 .stAlert, [data-testid='stAlert'] { border-radius: 8px !important; }
+
+/* Sidebar filters: flat accordion rows (Page.checkbox_filter) */
+[class*='st-key-filter_'][data-testid='stExpander'] details,
+[class*='st-key-filter_'] [data-testid='stExpander'] details {
+    border: none !important; border-bottom: 1px solid var(--ct-border) !important;
+    border-radius: 0 !important; background: transparent !important;
+}
+[class*='st-key-filter_'] summary { padding-left: 0 !important; padding-right: 0 !important; }
+[class*='st-key-filter_'] summary p { font-size: 1rem; font-weight: 600; }
 
 /* Cards */
 .ct-card {
@@ -247,6 +256,42 @@ class Page:
         )
         if selected != self.nav_label:
             st.switch_page(PAGE_ROUTES[selected])
+
+    # ── Filters ────────────────────────────────────────────────────────────────
+    @staticmethod
+    def checkbox_filter(label: str, options: list, key: str,
+                        format_func: Callable[[object], str] = str,
+                        counts: Mapping[object, int] | None = None,
+                        expanded: bool = False) -> list:
+        """
+        Online-store style filter: a collapsible section of checkboxes with a
+        "Select All" toggle, all ticked by default. ``counts`` shows a grey
+        "(n)" after each option. Returns the ticked options.
+        """
+        all_key = f"{key}_all"
+        item_keys = [f"{key}_{option}" for option in options]
+        for item_key in item_keys:
+            st.session_state.setdefault(item_key, True)
+        # Keep "Select All" in step with boxes the user ticked one by one.
+        st.session_state[all_key] = all(st.session_state[k] for k in item_keys)
+
+        def set_all() -> None:
+            for item_key in item_keys:
+                st.session_state[item_key] = st.session_state[all_key]
+
+        ticked = sum(st.session_state[k] for k in item_keys)
+        # Show the selection while collapsed, e.g. "Facilities (2/5)".
+        title = label if ticked == len(options) else f"{label} ({ticked}/{len(options)})"
+        with st.expander(title, expanded=expanded, key=f"filter_{key}"):
+            st.checkbox("Select All", key=all_key, on_change=set_all)
+            return [
+                option
+                for option, item_key in zip(options, item_keys)
+                if st.checkbox(
+                    format_func(option) + (f" :gray[({counts.get(option, 0)})]" if counts is not None else ""),
+                    key=item_key,
+                )
+            ]
 
     # ── Data ───────────────────────────────────────────────────────────────────
     @staticmethod

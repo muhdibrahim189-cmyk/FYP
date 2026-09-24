@@ -4,8 +4,12 @@ from utils.carbon_calculator import carbon_tax, calculate_emission, share_pct, y
 
 
 class CarbonCalculatorTests(unittest.TestCase):
-    def test_calculates_known_factor(self):
-        self.assertEqual(calculate_emission("Diesel", 10), 26.88)
+    def test_uses_sedg_guide_factors(self):
+        # SEDG guide 2.4: mt CO2e per unit x 1000 = kg CO2e per unit.
+        self.assertEqual(calculate_emission("Mobile – Diesel", 10), 29.09)                           # 0.002909 mt/L
+        self.assertEqual(calculate_emission("Stationary – Diesel", 10), 29.5)                        # 0.00295 mt/L
+        self.assertEqual(calculate_emission("Stationary – Natural Gas", 100), 5620.0)                # 0.0562 mt/GJ
+        self.assertEqual(calculate_emission("Electricity – Peninsular Malaysia (TNB)", 1000), 774.0) # 0.774 mt/MWh
 
     def test_unknown_source_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -14,7 +18,7 @@ class CarbonCalculatorTests(unittest.TestCase):
     def test_negative_or_non_finite_quantity_is_rejected(self):
         for quantity in (-1, float("nan"), float("inf")):
             with self.subTest(quantity=quantity), self.assertRaises(ValueError):
-                calculate_emission("Diesel", quantity)
+                calculate_emission("Mobile – Diesel", quantity)
 
     def test_carbon_tax_uses_tonnes(self):
         self.assertEqual(carbon_tax(1000), 35.0)

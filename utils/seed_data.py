@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from data.emission_factors import ALL_FACTORS, FACILITIES
+from data.emission_factors import ALL_FACTORS, COMPANIES
 
 SEED = 42
 SEED_START = datetime(2025, 1, 1)
@@ -33,12 +33,13 @@ class ScopeProfile:
 SEED_PROFILES = (
     ScopeProfile(
         scope=1,
-        base_quantities={"Natural Gas": 2800, "Diesel": 1500, "Petrol": 600, "LPG": 400},
+        base_quantities={"Stationary – Natural Gas": 100, "Mobile – Diesel": 1500,
+                         "Mobile – Petrol": 600, "Stationary – LPG": 10},
         seasonal_amplitude=0.15, seasonal_phase_months=0, monthly_trend=0.004, noise_std=0.07,
     ),
     ScopeProfile(
         scope=2,
-        base_quantities={"Electricity (Peninsular Malaysia)": 42000, "Steam / Heat": 8000},
+        base_quantities={"Electricity – Peninsular Malaysia (TNB)": 42000, "Electricity – Sabah (SESB)": 8000},
         seasonal_amplitude=0.20, seasonal_phase_months=3, monthly_trend=0.003, noise_std=0.06,
     ),
 )
@@ -55,7 +56,7 @@ def generate_seed_records() -> list[tuple]:
     records = []
     for month_offset in range(SEED_MONTHS):
         month_date = SEED_START + timedelta(days=DAYS_PER_SEED_MONTH * month_offset)
-        for facility in FACILITIES:
+        for facility in COMPANIES:
             for profile in SEED_PROFILES:
                 for source, base_qty in profile.base_quantities.items():
                     records.append(

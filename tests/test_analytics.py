@@ -42,12 +42,16 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(len(filter_emissions(make_records(), scopes=[], facilities=[])), 4)
 
     def test_combines_filters(self):
-        result = filter_emissions(make_records(), year=2024, scopes=[1], facilities=["Plant"])
+        result = filter_emissions(make_records(), years=[2024], scopes=[1], facilities=["Plant"])
         self.assertEqual(result["co2e_kg"].tolist(), [3000.0])
 
     def test_date_range_is_inclusive(self):
         result = filter_emissions(make_records(), date_range=(date(2024, 2, 5), date(2024, 3, 5)))
         self.assertEqual(len(result), 2)
+
+    def test_several_years(self):
+        self.assertEqual(len(filter_emissions(make_records(), years=[2024, 2025])), 4)
+        self.assertEqual(len(filter_emissions(make_records(), years=[2025])), 1)
 
     def test_submitted_by(self):
         self.assertEqual(len(filter_emissions(make_records(), submitted_by="admin")), 2)

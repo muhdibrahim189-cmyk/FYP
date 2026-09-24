@@ -5,9 +5,9 @@ from unittest import mock
 
 from utils import data_manager
 from utils.seed_data import SEED_MONTHS, generate_seed_records
-from data.emission_factors import FACILITIES
+from data.emission_factors import COMPANIES
 
-VALID = {"date": "2025-03-01", "facility": FACILITIES[0], "scope": 1, "source": "Diesel", "quantity": 10}
+VALID = {"date": "2025-03-01", "facility": COMPANIES[0], "scope": 1, "source": "Mobile – Diesel", "quantity": 10}
 
 
 class DataManagerTests(unittest.TestCase):
@@ -23,7 +23,7 @@ class DataManagerTests(unittest.TestCase):
         data_manager.init_db()
 
     def test_init_seeds_once(self):
-        expected = SEED_MONTHS * len(FACILITIES) * 6
+        expected = SEED_MONTHS * len(COMPANIES) * 6
         self.assertEqual(len(data_manager.load_database_emissions()), expected)
         data_manager.init_db()
         self.assertEqual(len(data_manager.load_database_emissions()), expected)
@@ -62,9 +62,9 @@ class DataManagerTests(unittest.TestCase):
     def test_invalid_submissions_are_rejected(self):
         cases = {
             "missing field": ({k: v for k, v in VALID.items() if k != "source"}, "user"),
-            "scope mismatch": ({**VALID, "source": "Steam / Heat"}, "user"),
+            "scope mismatch": ({**VALID, "source": "Electricity – Sabah (SESB)"}, "user"),
             "bad scope": ({**VALID, "scope": 3}, "user"),
-            "unknown facility": ({**VALID, "facility": "<script>"}, "user"),
+            "unknown company": ({**VALID, "facility": "<script>"}, "user"),
             "bad date": ({**VALID, "date": "01/03/2025"}, "user"),
             "negative quantity": ({**VALID, "quantity": -1}, "user"),
             "non-numeric quantity": ({**VALID, "quantity": "ten"}, "user"),
@@ -90,6 +90,11 @@ class WorkbookTests(unittest.TestCase):
         df = data_manager.load_emissions()
         self.assertEqual(set(df["scope"]), {1, 2})
         self.assertTrue(df.attrs["data_quality_issues"])
+
+    def test_companies_match_workbook(self):
+        if not data_manager.CARBON_EMISSION_DATA_PATH.exists():
+            self.skipTest("workbook not present")
+        self.assertEqual(sorted(data_manager.load_emissions()["facility"].unique()), sorted(COMPANIES))
 
     def test_cached_workbook_is_not_shared_between_callers(self):
         if not data_manager.CARBON_EMISSION_DATA_PATH.exists():

@@ -18,7 +18,7 @@ from typing import Any
 import pandas as pd
 
 from data.emission_factors import (
-    ALL_FACTORS, CARBON_TAX_RATE_MYR, FACILITIES, SCOPE1_SOURCES, SCOPE2_SOURCES,
+    ALL_FACTORS, CARBON_TAX_RATE_MYR, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES,
 )
 from utils.analytics import detect_anomaly
 from utils.carbon_calculator import KG_PER_TONNE, calculate_emission
@@ -292,8 +292,8 @@ def _validate_submission(data: dict[str, Any], username: str) -> None:
         datetime.strptime(str(data["date"]), DATE_FORMAT)
     except ValueError:
         raise ValueError("Emission date must use the YYYY-MM-DD format") from None
-    if data["facility"] not in FACILITIES:
-        raise ValueError("Unknown facility")
+    if data["facility"] not in COMPANIES:
+        raise ValueError("Unknown company")
     if data["scope"] not in (1, 2):
         raise ValueError("Scope must be 1 or 2")
     source_scope = SCOPE1_SOURCES if data["scope"] == 1 else SCOPE2_SOURCES

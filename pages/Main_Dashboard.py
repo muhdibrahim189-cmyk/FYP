@@ -22,7 +22,7 @@ from utils.carbon_calculator import (
 from utils.charts import (
     AMBER, BLUE, HEADING, ORANGE, PURPLE, RED, SCOPE_COLORS, apply_layout,
 )
-from utils.config import ALL_OPTION, FORECAST_MONTHS, GEMINI_MODEL_LABEL
+from utils.config import FORECAST_MONTHS, GEMINI_MODEL_LABEL
 from utils.data_manager import load_emissions
 from utils.ui import Page
 
@@ -42,21 +42,29 @@ class MainDashboard(Page):
     def sidebar(self) -> None:
         df_all = self.df_all = load_emissions()
         st.markdown("### ⚙️ Filters")
-        self.render_data_quality_notice(df_all)
 
-        years = sorted(df_all["date"].dt.year.unique(), reverse=True) if not df_all.empty else []
-        self.sel_year = st.selectbox("📅 Year", options=[ALL_OPTION] + [str(y) for y in years], index=0)
+        # Counts are records per option, like the item counts in an online store.
+        year_counts = df_all["date"].dt.year.value_counts() if not df_all.empty else {}
+        self.sel_years = self.checkbox_filter("Year", sorted(year_counts.keys(), reverse=True),
+                                              key="dash_year", counts=year_counts, expanded=True)
 
-        facilities_list = sorted(df_all["facility"].unique().tolist()) if not df_all.empty else []
-        self.sel_fac = st.multiselect("🏭 Facilities", options=facilities_list, default=facilities_list)
-        self.scope_opts = st.multiselect("🔍 Scope", options=[1, 2], default=[1, 2])
+        fac_counts = df_all["facility"].value_counts() if not df_all.empty else {}
+        self.sel_fac = self.checkbox_filter("Facilities", sorted(fac_counts.keys()),
+                                            key="dash_fac", counts=fac_counts)
+        scope_counts = df_all["scope"].value_counts() if not df_all.empty else {}
+        self.scope_opts = self.checkbox_filter("Scope", [1, 2], key="dash_scope", counts=scope_counts,
+                                               format_func=lambda s: f"Scope {s}")
         self.tax_rate = st.number_input("💰 Carbon Tax (MYR/t)", min_value=0.0,
                                         value=float(CARBON_TAX_RATE_MYR), step=1.0)
 
     def render(self) -> None:
+        # An empty selection would otherwise mean "no filter" and show everything.
+        if not self.df_all.empty and not (self.sel_years and self.sel_fac and self.scope_opts):
+            st.info("Tick at least one year, facility and scope in the sidebar to see data.")
+            st.stop()
         df = self.df = self.df_all if self.df_all.empty else filter_emissions(
             self.df_all,
-            year=None if self.sel_year == ALL_OPTION else int(self.sel_year),
+            years=self.sel_years,
             facilities=self.sel_fac,
             scopes=self.scope_opts,
         )
@@ -66,20 +74,17 @@ class MainDashboard(Page):
 
         self.render_kpis()
 
-        self.section_title("📈 Emission Trends & Analytical Breakdown")
+        # One scrolling page: every chart section follows the previous one.
         self.monthly = monthly_summary(df)
         self.src_summary = source_summary(df)
-        tab_trend, tab_source, tab_facility, tab_tax = st.tabs(
-            ["📉 Monthly Trend & Forecast", "🥧 By Source", "🏭 Facility Heatmap & Trellis", "💰 Carbon Tax Analysis"]
-        )
-        with tab_trend:
-            self.render_trend_tab()
-        with tab_source:
-            self.render_source_tab(self.src_summary)
-        with tab_facility:
-            self.render_facility_tab()
-        with tab_tax:
-            self.render_tax_tab()
+        self.section_title("📉 Monthly Trend & Forecast")
+        self.render_trend_section()
+        self.section_title("🥧 Emissions by Source")
+        self.render_source_section(self.src_summary)
+        self.section_title("🏭 Facility Heatmap & Trellis")
+        self.render_facility_section()
+        self.section_title("💰 Carbon Tax Analysis")
+        self.render_tax_section()
 
         self.render_ai_panel()
         self.footer()
@@ -118,8 +123,8 @@ class MainDashboard(Page):
             with col:
                 self.kpi_card(label, value, caption, color, delta=delta, delta_class=d_cls)
 
-    # ── Trend charts ───────────────────────────────────────────────────────────
-    def render_trend_tab(self) -> None:
+    # ── Chart sections ─────────────────────────────────────────────────────────
+    def render_trend_section(self) -> None:
         st.write(
             "Traces monthly GHG emissions across **Scope 1 (Direct)** and **Scope 2 (Indirect Electricity)**, "
             f"alongside an automated linear regression projection for the upcoming {FORECAST_MONTHS} months."
@@ -172,7 +177,7 @@ class MainDashboard(Page):
           </div>
         </div>""", unsafe_allow_html=True)
 
-    def render_source_tab(self, sources: pd.DataFrame) -> None:
+    def render_source_section(self, sources: pd.DataFrame) -> None:
         st.write(
             "Shows proportional breakdown of carbon emissions categorized by origin activity source. "
             "Hover over individual sectors for exact tonnage and percentage contributions."
@@ -195,7 +200,7 @@ class MainDashboard(Page):
                 self.render_source_row(row, total_tonnes)
         self.observation("Identify the largest contributing sources to prioritize for targeted decarbonization measures.")
 
-    def render_facility_tab(self) -> None:
+    def render_facility_section(self) -> None:
         st.write(
             "Multi-dimensional facility comparison: horizontal rankings display aggregate site burdens, "
             "while the monthly matrix heatmap pinpoints temporal intensity variations across operations."
@@ -220,7 +225,7 @@ class MainDashboard(Page):
         st.plotly_chart(fig_heat, width="stretch")
         self.observation("Darker blue cells indicate higher monthly facility output. Monitor sites with sudden spikes across consecutive months.")
 
-    def render_tax_tab(self) -> None:
+    def render_tax_section(self) -> None:
         st.write(
             "Quantifies financial exposure under carbon pricing frameworks. "
             "Dual-axis projection correlates monthly recurring fees against cumulative tax accumulation."

@@ -69,7 +69,7 @@ def facility_summary(df: pd.DataFrame) -> pd.DataFrame:
 def filter_emissions(
     df: pd.DataFrame,
     *,
-    year: int | None = None,
+    years: Iterable[int] = (),
     date_range: tuple[date, date] | None = None,
     scopes: Iterable[int] = (),
     sources: Iterable[str] = (),
@@ -81,8 +81,9 @@ def filter_emissions(
     An empty selection means "do not filter on this dimension".
     """
     mask = pd.Series(True, index=df.index)
-    if year is not None:
-        mask &= df["date"].dt.year == year
+    years = list(years)
+    if years:
+        mask &= df["date"].dt.year.isin(years)
     if date_range is not None:
         start, end = date_range
         day = df["date"].dt.date

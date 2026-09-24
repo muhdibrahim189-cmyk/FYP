@@ -35,6 +35,10 @@ class WhatIfSimulator(Page):
 
         # ── Levers ─────────────────────────────────────────────────────────────
         self.section_title("⚙️ Adjust Emission Levers")
+        if df["source"].str.startswith("Scope ").any():
+            self.muted_text("The emission data holds Scope 1 and Scope 2 totals only, so each slider "
+                            "counts as an equal share of its scope (e.g. Diesel −100% cuts Scope 1 by 1/5).",
+                            size="0.8rem")
         left_col, right_col = st.columns([1.1, 1], gap="large")
         with left_col:
             self.lever_group_header("🔥 Scope 1 — Direct Emissions", "#f59e0b")

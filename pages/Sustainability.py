@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from data.emission_factors import ALL_FACTORS, FACILITIES, SCOPE1_SOURCES, SCOPE2_SOURCES
+from data.emission_factors import ALL_FACTORS, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES
 from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
@@ -154,7 +154,7 @@ class Sustainability(Page):
         col1, col2 = st.columns(2)
         with col1:
             entry_date = st.date_input("📅 Emission Date", value=date.today(), max_value=date.today(), key="entry_date")
-            facility = st.selectbox("🏭 Facility", FACILITIES, key="entry_facility")
+            facility = st.selectbox("🏢 Company", COMPANIES, key="entry_facility")
             scope_choice = st.radio("🔍 Scope", [1, 2], horizontal=True, key="entry_scope",
                                     format_func=lambda x: f"Scope {x} ({'Direct' if x == 1 else 'Indirect'})")
         with col2:

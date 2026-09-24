@@ -167,7 +167,7 @@ class DataCentre(Page):
                 color="label", color_discrete_map=SCOPE_LABEL_COLORS,
             )
             apply_layout(fig_donut, 280)
-                st.plotly_chart(fig_donut, width="stretch")
+            st.plotly_chart(fig_donut, width="stretch")
 
             by_facility = grouped_tonnes(df, ["facility", "source"])
             fig_tree = px.treemap(

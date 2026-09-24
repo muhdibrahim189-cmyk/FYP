@@ -27,13 +27,15 @@ SCOPE2_FACTORS = {
 # All factors combined for easy lookup
 ALL_FACTORS = {**SCOPE1_FACTORS, **SCOPE2_FACTORS}
 
+# Reference grid factor quoted throughout the UI and AI prompts
+PENINSULAR_GRID_FACTOR = SCOPE2_FACTORS["Electricity (Peninsular Malaysia)"]["factor"]
+
 # Scope mapping for convenience
 SCOPE1_SOURCES = list(SCOPE1_FACTORS.keys())
 SCOPE2_SOURCES = list(SCOPE2_FACTORS.keys())
 
 # --------------- Carbon Tax / Price -------------------------
 CARBON_TAX_RATE_MYR = 35.0          # MYR per tonne CO₂e  (Malaysia 2026)
-CARBON_CREDIT_PRICE_MYR = 28.0      # MYR per tonne CO₂e  (voluntary market)
 
 # --------------- Facilities --------------------------------
 FACILITIES = [

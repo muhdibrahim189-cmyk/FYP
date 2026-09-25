@@ -1,18 +1,17 @@
 """
 Page 3 – Data Centre
-Full emission records with filtering, search, export, and charts.
+Full emission records with filtering, search, and export.
 """
 import math
 from datetime import datetime
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
 from data.emission_factors import CARBON_TAX_RATE_MYR
-from utils.analytics import filter_emissions, grouped_tonnes, scope_totals, search_rows, to_safe_csv
+from utils.analytics import filter_emissions, scope_totals, search_rows, to_safe_csv
 from utils.carbon_calculator import KG_PER_TONNE, carbon_tax, share_pct
-from utils.charts import AMBER, BLUE, HEADING, RED, SCOPE_COLORS, SCOPE_LABEL_COLORS, apply_layout
+from utils.charts import AMBER, BLUE, HEADING, RED
 from utils.config import ALL_OPTION, DATA_TABLE_PAGE_SIZE, STATUS_LABELS
 from utils.ui import Page
 
@@ -44,15 +43,12 @@ class DataCentre(Page):
 
     def render(self) -> None:
         self.df_raw = self.load_emissions_or_stop("No data found in the database.")
-        self.render_data_quality_notice(self.df_raw)
         self.df = self.render_filters()
         self.render_stats()
 
-        tab_data, tab_charts, tab_export = st.tabs(["📋 Data Table", "📊 Analytics & Visualizations", "📤 Export"])
+        tab_data, tab_export = st.tabs(["Data Table", "Export"])
         with tab_data:
             self.render_data_tab()
-        with tab_charts:
-            self.render_charts_tab()
         with tab_export:
             self.render_export_tab()
 
@@ -64,19 +60,19 @@ class DataCentre(Page):
         with f1:
             min_date = df_raw["date"].min().date()
             max_date = df_raw["date"].max().date()
-            date_range = st.date_input("📅 Date Range", value=(min_date, max_date),
+            date_range = st.date_input("Date Range", value=(min_date, max_date),
                                        min_value=min_date, max_value=max_date, key="dc_date")
         with f2:
-            scope_filter = st.multiselect("🔍 Scope", [1, 2], default=[1, 2], key="dc_scope")
+            scope_filter = st.multiselect("Scope", [1, 2], default=[1, 2], key="dc_scope")
         with f3:
             all_sources = sorted(df_raw["source"].unique().tolist())
-            source_filter = st.multiselect("⚗️ Source", all_sources, default=all_sources, key="dc_source")
+            source_filter = st.multiselect("Source", all_sources, default=all_sources, key="dc_source")
         with f4:
             facilities = sorted(df_raw["facility"].unique().tolist())
-            facility_filter = st.multiselect("🏭 Company", facilities, default=facilities, key="dc_fac")
+            facility_filter = st.multiselect("Company", facilities, default=facilities, key="dc_fac")
         with f5:
             user_options = [ALL_OPTION] + sorted(df_raw["submitted_by"].unique().tolist())
-            user_filter = st.selectbox("👤 Submitted By", user_options, key="dc_user")
+            user_filter = st.selectbox("Submitted By", user_options, key="dc_user")
 
         return filter_emissions(
             df_raw,
@@ -114,7 +110,6 @@ class DataCentre(Page):
         return table
 
     def render_data_tab(self) -> None:
-        st.write("Browse, search, and inspect individual historical emission records. Filtered rows match your active criteria above.")
         search = st.text_input("🔎 Search records (source, facility, submitted by…)", "", key="dc_search")
         table = self.build_display_table(search_rows(self.df, search))
         self.muted_text(f"Showing {len(table):,} of {len(self.df_raw):,} records", size="0.78rem")
@@ -132,54 +127,6 @@ class DataCentre(Page):
                     unsafe_allow_html=True)
         self.observation("Use column headers to sort tabular data. All records are verifiable against audit log events.")
 
-    # ── Charts ─────────────────────────────────────────────────────────────────
-    def render_charts_tab(self) -> None:
-        df = self.df
-        st.write("Visual exploratory analysis of filtered records across temporal, source, and facility dimensions.")
-        c_left, c_right = st.columns(2)
-
-        with c_left:
-            if not df.empty:
-                daily = grouped_tonnes(df, ["date", "scope"])
-                fig_timeline = px.line(
-                    daily, x="date", y="co2e_tonnes", color="scope",
-                    title="Daily CO₂e Over Time (tonnes)",
-                    labels={"co2e_tonnes": "Tonnes CO₂e", "date": "Date", "scope": "Scope"},
-                    color_discrete_map=SCOPE_COLORS,
-                )
-                apply_layout(fig_timeline, 300)
-                st.plotly_chart(fig_timeline, width="stretch")
-
-            by_source = grouped_tonnes(df, ["source"]).sort_values("co2e_kg", ascending=False)
-            fig_source = px.bar(
-                by_source, x="co2e_tonnes", y="source", orientation="h",
-                color="co2e_tonnes", color_continuous_scale=px.colors.sequential.Blues,
-                title="CO₂e by Source (tonnes)", labels={"co2e_tonnes": "Tonnes", "source": ""},
-            )
-            apply_layout(fig_source, 350, coloraxis_showscale=False)
-            st.plotly_chart(fig_source, width="stretch")
-
-        with c_right:
-            by_scope = df.groupby("scope")["co2e_kg"].sum().reset_index()
-            by_scope["label"] = by_scope["scope"].map({1: "Scope 1", 2: "Scope 2"})
-            fig_donut = px.pie(
-                by_scope, values="co2e_kg", names="label", hole=0.5, title="Scope Distribution",
-                color="label", color_discrete_map=SCOPE_LABEL_COLORS,
-            )
-            apply_layout(fig_donut, 280)
-            st.plotly_chart(fig_donut, width="stretch")
-
-            by_facility = grouped_tonnes(df, ["facility", "source"])
-            fig_tree = px.treemap(
-                by_facility, path=["facility", "source"], values="co2e_tonnes",
-                title="Emission Breakdown: Facility → Source", labels={"co2e_tonnes": "Tonnes CO₂e"},
-                color="co2e_tonnes", color_continuous_scale=px.colors.sequential.Blues,
-            )
-            apply_layout(fig_tree, 350)
-            st.plotly_chart(fig_tree, width="stretch")
-
-        self.observation("The treemap hierarchy illustrates how emissions aggregate from individual facility operations up to total corporate burden.")
-
     # ── Export ─────────────────────────────────────────────────────────────────
     @staticmethod
     def build_export_frame(records: pd.DataFrame) -> pd.DataFrame:
@@ -195,7 +142,7 @@ class DataCentre(Page):
         col_dl, col_info = st.columns([1, 2])
         with col_dl:
             st.download_button(
-                label="⬇️ Download CSV",
+                label="Download CSV",
                 data=to_safe_csv(export_df),
                 file_name=f"carbontrack_emissions_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",

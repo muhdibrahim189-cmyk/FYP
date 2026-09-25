@@ -68,7 +68,7 @@ LEVER_SOURCES: dict[str, tuple[str, ...]] = {
     "Electricity – Sabah (SESB)": _ELECTRICITY,
     "Electricity – Sarawak (Sarawak Energy)": _ELECTRICITY,
     "Electricity – Kulim Hi-Tech Park (NUR)": _ELECTRICITY,
-    # Workbook rows ("Scope 1", "Scope 2 (location-based)") are scope totals
+    # Workbook rows ("Scope 1", "Scope 2") are scope totals
     # with no fuel breakdown, so every lever of that scope is an equal share.
     # ponytail: equal-share assumption; weight by a real fuel mix if the workbook gains one.
     **{

@@ -11,14 +11,12 @@ from datetime import date, datetime
 from html import escape
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
 from data.emission_factors import ALL_FACTORS, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES
 from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
-from utils.charts import AMBER, BLUE, HEADING, RED, apply_layout
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
 from utils.data_manager import (
     approve_submission, load_activity_log, load_all_pending, load_database_emissions,
@@ -38,14 +36,6 @@ ACTION_STYLES = {                       # action -> (colour, icon)
     "LOGOUT":             ("var(--ct-muted)", "🚪"),
 }
 DEFAULT_ACTION_STYLE = ("var(--ct-muted)", "•")
-SUSTAINABILITY_TARGETS = (             # (name, deadline, status, progress %)
-    ("Net Zero by 2050",        "Long-term goal", "Planning",    15),
-    ("30% Scope 2 Reduction",   "By end of 2027", "In Progress", 42),
-    ("Renewable Energy 40%",    "By 2026",        "In Progress", 28),
-    ("ISO 14064 Certification", "2025 Q4",        "In Review",   75),
-    ("Carbon Tax Compliance",   "Annual filing",  "Compliant",   100),
-    ("Employee GHG Training",   "850 employees",  "Completed",   100),
-)
 
 
 class Sustainability(Page):
@@ -68,17 +58,13 @@ class Sustainability(Page):
               </div>
             </div>""", unsafe_allow_html=True)
 
-        tab_entry, tab_approval, tab_log, tab_metrics = st.tabs(
-            ["📝 Data Entry", "⏳ Approval Queue", "📜 Activity Log", "📊 Sustainability Metrics"]
-        )
+        tab_entry, tab_approval, tab_log = st.tabs(["Data Entry", "Approval Queue", "Activity Log"])
         with tab_entry:
             self.render_entry_tab()
         with tab_approval:
             self.render_approval_tab()
         with tab_log:
             self.render_log_tab()
-        with tab_metrics:
-            self.render_metrics_tab()
 
     # ── TAB 1 – Data Entry ──────────────────────────────────────────────────────
     @staticmethod
@@ -153,19 +139,19 @@ class Sustainability(Page):
         # the scope/source/quantity choices as they change.
         col1, col2 = st.columns(2)
         with col1:
-            entry_date = st.date_input("📅 Emission Date", value=date.today(), max_value=date.today(), key="entry_date")
-            facility = st.selectbox("🏢 Company", COMPANIES, key="entry_facility")
-            scope_choice = st.radio("🔍 Scope", [1, 2], horizontal=True, key="entry_scope",
+            entry_date = st.date_input("Emission Date", value=date.today(), max_value=date.today(), key="entry_date")
+            facility = st.selectbox("Company", COMPANIES, key="entry_facility")
+            scope_choice = st.radio("Scope", [1, 2], horizontal=True, key="entry_scope",
                                     format_func=lambda x: f"Scope {x} ({'Direct' if x == 1 else 'Indirect'})")
         with col2:
             sources = SCOPE1_SOURCES if scope_choice == 1 else SCOPE2_SOURCES
-            source = st.selectbox("⚗️ Emission Source", sources, key=f"entry_source_{scope_choice}")
+            source = st.selectbox("Emission Source", sources, key=f"entry_source_{scope_choice}")
             unit_label = ALL_FACTORS[source]["unit"]
-            quantity = st.number_input(f"📦 Quantity ({unit_label})", min_value=0.0, value=100.0,
+            quantity = st.number_input(f"Quantity ({unit_label})", min_value=0.0, value=100.0,
                                        step=10.0, format="%.2f", key="entry_quantity")
             self.render_co2e_preview(quantity * ALL_FACTORS[source]["factor"])
 
-        notes = st.text_area("📄 Notes (optional)", placeholder="Add any relevant context…", height=80, key="entry_notes")
+        notes = st.text_area("Notes (optional)", placeholder="Add any relevant context…", height=80, key="entry_notes")
 
         submit_col, _ = st.columns([1, 3])
         with submit_col:
@@ -325,98 +311,6 @@ class Sustainability(Page):
             )
 
         self.observation("Security and governance logs cannot be deleted through the interface. Use CSV export for regulatory ESG reporting packages.")
-
-    # ── TAB 4 – Sustainability Metrics ──────────────────────────────────────────
-    def render_governance_charts(self, ledger: pd.DataFrame, history: pd.DataFrame) -> None:
-        c_left, c_right = st.columns(2)
-        with c_left:
-            per_user = ledger.groupby("submitted_by").size().reset_index(name="count").sort_values("count")
-            fig_users = px.bar(
-                per_user, x="count", y="submitted_by", orientation="h",
-                color="count", color_continuous_scale=px.colors.sequential.Blues,
-                title="Records Submitted per User", labels={"count": "Records", "submitted_by": "User"},
-            )
-            apply_layout(fig_users, 280, coloraxis_showscale=False)
-            st.plotly_chart(fig_users, width="stretch")
-
-        with c_right:
-            by_month = ledger.assign(sub_month=ledger["submitted_at"].dt.to_period("M").astype(str))
-            monthly_subs = by_month.groupby(["sub_month", "submitted_by"]).size().reset_index(name="count")
-            fig_monthly = px.line(
-                monthly_subs, x="sub_month", y="count", color="submitted_by",
-                title="Monthly Submission Activity by User",
-                labels={"sub_month": "Month", "count": "Submissions", "submitted_by": "User"}, markers=True,
-            )
-            apply_layout(fig_monthly, 280)
-            st.plotly_chart(fig_monthly, width="stretch")
-
-        if not history.empty:
-            by_outcome = (
-                history.assign(sub_month=history["submitted_at"].dt.to_period("M").astype(str))
-                .groupby(["sub_month", "status"]).size().reset_index(name="count")
-            )
-            fig_anomalies = px.bar(
-                by_outcome, x="sub_month", y="count", color="status",
-                title="Anomaly Submissions by Month & Outcome",
-                color_discrete_map={"pending": "#eab308", "approved": "#16a34a", "rejected": "#dc2626"},
-                labels={"sub_month": "Month", "count": "Count", "status": "Status"}, barmode="group",
-            )
-            apply_layout(fig_anomalies, 300)
-            st.plotly_chart(fig_anomalies, width="stretch")
-
-    @staticmethod
-    def target_badge_class(status: str) -> str:
-        if status in ("Compliant", "Completed"):
-            return "approved-badge"
-        if "Progress" in status or "Review" in status:
-            return "pending-badge"
-        return "anomaly-badge"
-
-    def render_targets(self) -> None:
-        self.section_title("🎯 Sustainability Targets & Strategic Milestones")
-        st.write("Progress tracking toward statutory corporate climate commitments.")
-        for name, deadline, status, progress in SUSTAINABILITY_TARGETS:
-            bar_color = "#16a34a" if progress == 100 else ("#2563EB" if progress > 50 else "#ea580c")
-            st.markdown(f"""
-            <div class='ct-card' style='padding:0.9rem 1.3rem;margin:0.4rem 0;'>
-              <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;'>
-                <div>
-                  <span style='color:var(--ct-text);font-weight:700;font-size:0.95rem;font-family:Outfit,sans-serif;'>{name}</span>
-                  <span style='color:var(--ct-muted);font-size:0.78rem;margin-left:0.6rem;'>· {deadline}</span>
-                </div>
-                <div class='{self.target_badge_class(status)}'>{status}</div>
-              </div>
-              <div style='background:var(--ct-border);border-radius:10px;height:7px;overflow:hidden;'>
-                <div style='width:{progress}%;background:{bar_color};height:100%;border-radius:10px;transition:width 0.5s;'></div>
-              </div>
-              <div style='color:var(--ct-muted);font-size:0.75rem;margin-top:0.35rem;text-align:right;font-weight:600;'>{progress}% achieved</div>
-            </div>""", unsafe_allow_html=True)
-
-    def render_metrics_tab(self) -> None:
-        self.section_title("📊 Governance & Submission Analytics")
-        st.write(
-            "Quantitative monitoring of data throughput, anomaly resolution ratios, and team contributor metrics. "
-            "Supports data-readiness tracking toward international corporate sustainability disclosures."
-        )
-        ledger = load_database_emissions()
-        history = load_all_pending()
-        status_counts = history["status"].value_counts() if not history.empty else pd.Series(dtype=int)
-
-        metrics = (
-            ("Total Records", f"{len(ledger):,}", "approved entries", HEADING),
-            ("Flagged & Approved", f"{status_counts.get('approved', 0):,}", "anomalies approved", AMBER),
-            ("Submissions Rejected", f"{status_counts.get('rejected', 0):,}", "anomalies rejected", RED),
-            ("Active Contributors", f"{ledger['submitted_by'].nunique() if not ledger.empty else 0}",
-             "data entry users", BLUE),
-        )
-        for col, (label, value, caption, color) in zip(st.columns(len(metrics)), metrics):
-            with col:
-                self.kpi_card(label, value, caption, color)
-
-        if not ledger.empty:
-            self.render_governance_charts(ledger, history)
-        self.render_targets()
-        self.observation("Target progress automatically updates as newly verified emission entries and efficiency initiatives are reconciled.")
 
 
 Sustainability().run()

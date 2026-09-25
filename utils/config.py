@@ -14,8 +14,8 @@ APP_PAGE_ICON = "🌿"
 PAGE_ROUTES = {
     "Main Dashboard": "pages/Main_Dashboard.py",
     "What-If Simulator": "pages/What_If_Simulator.py",
-    "Data Centre": "pages/Data_Centre.py",
     "Sustainability": "pages/Sustainability.py",
+    "Data Centre": "pages/Data_Centre.py",
 }
 # Default page of the router in app.py: where users land after signing in.
 DEFAULT_PAGE = "Main Dashboard"

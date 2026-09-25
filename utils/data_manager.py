@@ -38,7 +38,7 @@ WORKBOOK_REQUIRED_COLUMNS = frozenset({
 })
 WORKBOOK_SCOPE_COLUMNS = (
     (1, "scope1_mt_co2e", "Scope 1"),
-    (2, "scope2_location_mt_co2e", "Scope 2 (location-based)"),
+    (2, "scope2_location_mt_co2e", "Scope 2"),
 )
 WORKBOOK_DATA_QUALITY_ISSUES = (
     "The workbook has company-year totals only; it does not contain facility-level records, "

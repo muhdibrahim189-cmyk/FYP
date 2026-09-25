@@ -20,7 +20,7 @@ from utils.carbon_calculator import (
     carbon_tax, emission_intensity_employee, emission_intensity_revenue, kg_to_tonnes, share_pct,
 )
 from utils.charts import (
-    AMBER, BLUE, HEADING, ORANGE, PURPLE, RED, SCOPE_COLORS, apply_layout,
+    AMBER, BLUE, HEADING, SCOPE_COLORS, apply_layout,
 )
 from utils.config import FORECAST_MONTHS, GEMINI_MODEL_LABEL
 from utils.data_manager import load_emissions
@@ -114,10 +114,7 @@ class MainDashboard(Page):
              f"{delta_icon} {abs(change_pct):.1f}% vs prior period", delta_class, HEADING),
             ("Scope 1", f"{self.s1_t:,.1f}", "tonnes CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
             ("Scope 2", f"{self.s2_t:,.1f}", "tonnes CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
-            ("Carbon Tax", f"MYR {self.tax_liab:,.0f}", f"@ MYR {self.tax_rate:.0f}/t",
-             "Estimated liability", "delta-neu", RED),
-            ("Revenue Intensity", f"{self.intensity_rev:.2f}", "tCO₂e / MYR 1M", "Economic intensity", "delta-neu", PURPLE),
-            ("Per Employee", f"{self.intensity_emp:.2f}", "tCO₂e / employee", f"{EMPLOYEES} employees", "delta-neu", ORANGE),
+            ("—", "—", "", "Coming soon", "delta-neu", HEADING),  # placeholder slot
         )
         for col, (label, value, caption, delta, d_cls, color) in zip(st.columns(len(cards), gap="small"), cards):
             with col:

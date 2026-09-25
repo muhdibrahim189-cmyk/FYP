@@ -34,7 +34,6 @@ EXPORT_COLUMNS = (
 
 class DataCentre(Page):
     name = "Data Centre"
-    icon = "🗄️"
     nav_label = "Data Centre"
     header = (
         " Emission Data Repository",

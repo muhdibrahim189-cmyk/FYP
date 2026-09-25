@@ -4,7 +4,7 @@ ui.py – App bootstrap and the ``Page`` base class every page inherits from.
 Every value interpolated into raw HTML that can come from users, the database,
 the workbook or the AI model is passed through ``html.escape``.
 """
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from html import escape
 
 import pandas as pd
@@ -12,7 +12,7 @@ import streamlit as st
 
 from data.emission_factors import PENINSULAR_GRID_FACTOR
 from utils.auth import render_sidebar_user, require_login
-from utils.config import APP_NAME, APP_PAGE_ICON, NAVIGATION_OPTIONS, PAGE_ROUTES
+from utils.config import APP_LOGO_DATA_URI, APP_NAME, APP_PAGE_ICON, NAVIGATION_OPTIONS, PAGE_ROUTES
 from utils.data_manager import init_db, load_emissions
 
 FONT_IMPORT = (
@@ -210,12 +210,11 @@ class Page:
     """
 
     name: str                               # browser tab: "<name> · Fiscal Green"
-    icon: str
     nav_label: str                          # key of PAGE_ROUTES
     header: tuple[str, str] | None = None   # (title, subtitle) shown above render()
 
     def run(self) -> None:
-        st.set_page_config(page_title=f"{self.name} · {APP_NAME}", page_icon=self.icon)
+        st.set_page_config(page_title=f"{self.name} · {APP_NAME}", page_icon=APP_PAGE_ICON)
         require_login()  # defence in depth; the router has already checked
         with st.sidebar:
             self._render_brand()
@@ -239,7 +238,7 @@ class Page:
         st.markdown(
             f"""
             <div style='padding:0.3rem 0 0.8rem;text-align:center;'>
-              <span style='font-size:1.8rem;'>{APP_PAGE_ICON}</span>
+              <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='height:3.5rem;'>
               <div style='font-size:1.1rem;font-weight:700;color:var(--ct-heading);font-family:Outfit,sans-serif;'>{APP_NAME}</div>
             </div>
             """,
@@ -261,12 +260,10 @@ class Page:
     @staticmethod
     def checkbox_filter(label: str, options: list, key: str,
                         format_func: Callable[[object], str] = str,
-                        counts: Mapping[object, int] | None = None,
                         expanded: bool = False) -> list:
         """
         Online-store style filter: a collapsible section of checkboxes with a
-        "Select All" toggle, all ticked by default. ``counts`` shows a grey
-        "(n)" after each option. Returns the ticked options.
+        "Select All" toggle, all ticked by default. Returns the ticked options.
         """
         all_key = f"{key}_all"
         item_keys = [f"{key}_{option}" for option in options]
@@ -287,10 +284,7 @@ class Page:
             return [
                 option
                 for option, item_key in zip(options, item_keys)
-                if st.checkbox(
-                    format_func(option) + (f" :gray[({counts.get(option, 0)})]" if counts is not None else ""),
-                    key=item_key,
-                )
+                if st.checkbox(format_func(option), key=item_key)
             ]
 
     # ── Data ───────────────────────────────────────────────────────────────────

@@ -23,7 +23,6 @@ CHAT_SUGGESTIONS = (
 
 class WhatIfSimulator(Page):
     name = "What-If Simulator"
-    icon = "🔬"
     nav_label = "What-If Simulator"
     header = (
         "🔬 What-If Emission Scenario Simulator",
@@ -169,7 +168,7 @@ class WhatIfSimulator(Page):
                 self.cached_ai_text("sim_ai_cache", analyse, "🤖 Analysing your scenario…",
                                     lambda: get_whatif_recommendation(scenario_text))
             else:
-                self.muted_text("👆 Adjust the sliders above to explore emission reduction scenarios, "
+                self.muted_text("❗ Adjust the sliders above to explore emission reduction scenarios, "
                                 "then click Analyse to get AI recommendations.", size="0.88rem")
 
     # ── AI chatbot ─────────────────────────────────────────────────────────────
@@ -192,7 +191,7 @@ class WhatIfSimulator(Page):
         st.session_state.setdefault("chat_gemini_history", [])   # in Gemini's format
 
         self.section_title("💬 AI Sustainability Chatbot")
-        with st.expander("🤖 Ask the AI Chatbot for Recommendations", expanded=True):
+        with st.expander("Ask the AI Chatbot for Recommendations", expanded=True):
             self.muted_text("Ask about emission reduction strategies, efficiency benchmarks, carbon market options, "
                             "Malaysia regulations, or anything related to your sustainability journey.", size="0.82rem")
 
@@ -201,7 +200,7 @@ class WhatIfSimulator(Page):
             for i, suggestion in enumerate(CHAT_SUGGESTIONS):
                 with suggestion_cols[i % 2]:
                     if st.button(f"↗ {suggestion}", key=f"sug_{i}", width="stretch"):
-                        with st.spinner("🤖 Thinking…"):
+                        with st.spinner("Thinking…"):
                             self.ask_chatbot(suggestion)
                         st.rerun()
 
@@ -215,7 +214,7 @@ class WhatIfSimulator(Page):
                 with st.chat_message("user"):
                     st.markdown(user_input)
                 with st.chat_message("assistant"):
-                    with st.spinner("🤖 Thinking…"):
+                    with st.spinner("Thinking…"):
                         st.markdown(self.ask_chatbot(user_input))
 
             if st.session_state.chat_history and st.button("🗑️ Clear Chat", key="clear_chat"):

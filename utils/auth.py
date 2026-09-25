@@ -7,7 +7,7 @@ import logging
 
 import streamlit as st
 
-from utils.config import APP_NAME, APP_PAGE_ICON
+from utils.config import APP_LOGO_DATA_URI, APP_NAME
 from utils.data_manager import log_action
 
 logger = logging.getLogger(__name__)
@@ -19,17 +19,17 @@ USERS = {
     "admin": {
         "password": "admin123",
         "role":     "admin",
-        "name":     "Ahmad Faris (Admin)",
+        "name":     "Ahmad Faris",
     },
     "manager": {
         "password": "mgr123",
         "role":     "manager",
-        "name":     "Nurul Ain (Manager)",
+        "name":     "Nurul Ain",
     },
     "user": {
         "password": "user123",
         "role":     "data_entry",
-        "name":     "Haziq Rahman (Data Entry)",
+        "name":     "Haziq Rahman",
     },
 }
 
@@ -150,7 +150,7 @@ def _render_login_page() -> None:
         st.markdown(
             f"""
             <div style='text-align:center;margin-bottom:2rem;'>
-              <span style='font-size:3rem;'>{APP_PAGE_ICON}</span>
+              <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='height:5rem;'>
               <h1 style='color:var(--ct-heading);margin:0;font-size:2rem;font-weight:700;'>{APP_NAME}</h1>
               <p style='color:var(--ct-muted);margin:0.2rem 0 0;font-size:0.92rem;'>Digital Carbon Accounting Platform</p>
             </div>

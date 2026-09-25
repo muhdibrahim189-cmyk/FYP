@@ -1,5 +1,6 @@
 """Application configuration and shared constants."""
 
+import base64
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,7 +9,10 @@ DATABASE_PATH = DATA_DIR / "emissions.db"
 CARBON_EMISSION_DATA_PATH = PROJECT_ROOT / "Carbon_Emission_Data.xlsx"
 
 APP_NAME = "Fiscal Green"
-APP_PAGE_ICON = "🌿"
+APP_LOGO_PATH = PROJECT_ROOT / "assets" / "logo.png"
+APP_PAGE_ICON = str(APP_LOGO_PATH)  # browser-tab icon
+# Inline copy for the HTML brand blocks (sidebar, login), which can't reference a local file.
+APP_LOGO_DATA_URI = "data:image/png;base64," + base64.b64encode(APP_LOGO_PATH.read_bytes()).decode()
 
 # ── Navigation ────────────────────────────────────────────────────────────────
 PAGE_ROUTES = {

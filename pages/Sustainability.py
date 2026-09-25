@@ -40,7 +40,6 @@ DEFAULT_ACTION_STYLE = ("var(--ct-muted)", "•")
 
 class Sustainability(Page):
     name = "Sustainability"
-    icon = "♻️"
     nav_label = "Sustainability"
 
     def render(self) -> None:

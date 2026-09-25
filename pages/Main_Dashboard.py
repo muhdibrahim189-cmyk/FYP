@@ -31,7 +31,6 @@ SCOPE_FILL_COLORS = {1: "rgba(217,119,6,0.06)", 2: "rgba(37,99,235,0.06)"}
 
 class MainDashboard(Page):
     name = "Dashboard"
-    icon = "📊"
     nav_label = "Main Dashboard"
     header = (
         "📊 Emission Dashboard",
@@ -43,16 +42,11 @@ class MainDashboard(Page):
         df_all = self.df_all = load_emissions()
         st.markdown("### ⚙️ Filters")
 
-        # Counts are records per option, like the item counts in an online store.
-        year_counts = df_all["date"].dt.year.value_counts() if not df_all.empty else {}
-        self.sel_years = self.checkbox_filter("Year", sorted(year_counts.keys(), reverse=True),
-                                              key="dash_year", counts=year_counts, expanded=True)
-
-        fac_counts = df_all["facility"].value_counts() if not df_all.empty else {}
-        self.sel_fac = self.checkbox_filter("Facilities", sorted(fac_counts.keys()),
-                                            key="dash_fac", counts=fac_counts)
-        scope_counts = df_all["scope"].value_counts() if not df_all.empty else {}
-        self.scope_opts = self.checkbox_filter("Scope", [1, 2], key="dash_scope", counts=scope_counts,
+        years = sorted(df_all["date"].dt.year.unique(), reverse=True) if not df_all.empty else []
+        self.sel_years = self.checkbox_filter("Year", years, key="dash_year", expanded=True)
+        facilities = sorted(df_all["facility"].unique()) if not df_all.empty else []
+        self.sel_fac = self.checkbox_filter("Facilities", facilities, key="dash_fac")
+        self.scope_opts = self.checkbox_filter("Scope", [1, 2], key="dash_scope",
                                                format_func=lambda s: f"Scope {s}")
         self.tax_rate = st.number_input("💰 Carbon Tax (MYR/t)", min_value=0.0,
                                         value=float(CARBON_TAX_RATE_MYR), step=1.0)

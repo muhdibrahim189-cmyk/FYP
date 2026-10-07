@@ -13,7 +13,7 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
-from data.emission_factors import ALL_FACTORS, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES
+from data.emission_factors import ALL_FACTORS, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES, UNIT_NAMES
 from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
@@ -72,7 +72,7 @@ class Sustainability(Page):
         <div style='background:var(--ct-surface-alt);border:1px solid var(--ct-border);border-left:4px solid #2563EB;
             border-radius:8px;padding:0.7rem 0.9rem;margin-top:0.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.02);'>
           <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;'>Estimated CO₂e Calculation</div>
-          <div style='color:var(--ct-heading);font-size:1.35rem;font-weight:700;font-family:Outfit,sans-serif;'>{co2e_kg:,.2f} kg</div>
+          <div style='color:var(--ct-heading);font-size:1.35rem;font-weight:700;font-family:Poppins,sans-serif;'>{co2e_kg:,.2f} kg</div>
           <div style='color:var(--ct-muted);font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):.4f} tonnes ·
             Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}</div>
         </div>""", unsafe_allow_html=True)
@@ -147,7 +147,8 @@ class Sustainability(Page):
             source = st.selectbox("Emission Source", sources, key=f"entry_source_{scope_choice}")
             unit_label = ALL_FACTORS[source]["unit"]
             quantity = st.number_input(f"Quantity ({unit_label})", min_value=0.0, value=100.0,
-                                       step=10.0, format="%.2f", key="entry_quantity")
+                                       step=10.0, format="%.2f", key="entry_quantity",
+                                       help=f"Unit: {UNIT_NAMES[unit_label]}")
             self.render_co2e_preview(quantity * ALL_FACTORS[source]["factor"])
 
         notes = st.text_area("Notes (optional)", placeholder="Add any relevant context…", height=80, key="entry_notes")
@@ -185,7 +186,7 @@ class Sustainability(Page):
             <div class='anomaly-badge'>⚠️ Anomaly Flagged</div>
             <span style='color:var(--ct-muted);font-size:0.75rem;font-weight:600;'>Entry ID #{int(row['id'])}</span>
           </div>
-          <div style='color:var(--ct-heading);font-weight:700;font-size:1.05rem;font-family:Outfit,sans-serif;'>
+          <div style='color:var(--ct-heading);font-weight:700;font-size:1.05rem;font-family:Poppins,sans-serif;'>
             {escape(str(row['source']))} — {escape(str(row['facility']))}
           </div>
           <div style='color:var(--ct-text-soft);font-size:0.84rem;margin-top:0.25rem;'>

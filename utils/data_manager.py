@@ -2,8 +2,9 @@
 data_manager.py – Data access: SQLite ledger, workbook source, CRUD, audit log.
 
 Two data sources exist:
-  * Carbon_Emission_Data.xlsx – company-year totals used by the analytics pages
-    (approved emissions) whenever the workbook is present.
+  * Carbon_Emission_Data.xlsx – company-month totals (sheet Monthly_Data) used by
+    the analytics pages (approved emissions) and the STIRPAT forecast whenever
+    the workbook is present.
   * data/emissions.db – the operational ledger that receives data-entry
     submissions, the approval queue and the activity log.
 """
@@ -21,7 +22,7 @@ from data.emission_factors import (
     ALL_FACTORS, CARBON_TAX_RATE_MYR, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES,
 )
 from utils.analytics import detect_anomaly
-from utils.carbon_calculator import KG_PER_TONNE, calculate_emission
+from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, calculate_emission
 from utils.config import (
     ACTIVITY_LOG_LIMIT, CARBON_EMISSION_DATA_PATH, DATABASE_PATH, DB_TIMEOUT_SECONDS,
 )
@@ -32,17 +33,25 @@ TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 DATE_FORMAT = "%Y-%m-%d"
 
 WORKBOOK_SOURCE_NAME = "Carbon_Emission_Data"
+WORKBOOK_SHEET = "Monthly_Data"
+# STIRPAT drivers in the workbook: P = production, A = revenue (affluence), T = energy intensity.
+# Production is a daily rate (kboe/d); the panel turns it into a monthly volume to match I and A.
+WORKBOOK_DRIVER_COLUMNS = {
+    "P": "production_koebd_P",
+    "A": "revenue_usd_millions_A",
+    "T": "energy_intensity_GWh_per_mmboe_T",
+}
 WORKBOOK_REQUIRED_COLUMNS = frozenset({
-    "company", "year", "scope1_mt_co2e", "scope2_location_mt_co2e",
-    "scope1_plus_2_mt_co2e", "employees_000s", "data_notes",
+    "company", "date", "days_in_month", "scope1_mt_co2e", "scope2_location_mt_co2e", "data_type",
+    *WORKBOOK_DRIVER_COLUMNS.values(),
 })
 WORKBOOK_SCOPE_COLUMNS = (
     (1, "scope1_mt_co2e", "Scope 1"),
     (2, "scope2_location_mt_co2e", "Scope 2"),
 )
 WORKBOOK_DATA_QUALITY_ISSUES = (
-    "The workbook has company-year totals only; it does not contain facility-level records, "
-    "emission sources, activity quantities, or transaction-level dates.",
+    "The workbook has company-month totals disaggregated from annual reports (2026 is synthetic); "
+    "it does not contain facility-level records, emission sources or activity quantities.",
     "Scope 2 is location-based only. Market-based Scope 2 data is not available.",
 )
 
@@ -157,9 +166,12 @@ def _add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=4)
-def _read_workbook(path: str, modified_ns: int) -> pd.DataFrame:
-    """Parse the workbook once per file version (``modified_ns`` busts the cache)."""
-    workbook = pd.read_excel(path)
+def _read_workbook(path: str, modified_ns: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Parse the workbook once per file version (``modified_ns`` busts the cache).
+    Returns (emission records, STIRPAT panel).
+    """
+    workbook = pd.read_excel(path, sheet_name=WORKBOOK_SHEET)
     missing = sorted(WORKBOOK_REQUIRED_COLUMNS - set(workbook.columns))
     if missing:
         raise ValueError(
@@ -168,40 +180,62 @@ def _read_workbook(path: str, modified_ns: int) -> pd.DataFrame:
 
     rows = []
     for record in workbook.to_dict("records"):
-        period = pd.Timestamp(year=int(record["year"]), month=1, day=1)
+        period = pd.Timestamp(record["date"])
         common = {
             "date": period,
             "facility": str(record["company"]),
-            "unit": "tonnes CO2e",
-            "quantity": 1.0,
+            "unit": "Mt CO2e",
             "submitted_by": WORKBOOK_SOURCE_NAME,
             "submitted_at": period,
             "status": "approved",
             "approved_by": WORKBOOK_SOURCE_NAME,
             "approved_at": period,
-            "notes": str(record["data_notes"]),
+            "notes": str(record["data_type"]),
             "is_anomaly": 0,
-            "employees_000s": float(record["employees_000s"]),
         }
         for scope, column, source in WORKBOOK_SCOPE_COLUMNS:
             rows.append({
                 **common,
                 "scope": scope,
                 "source": source,
-                "co2e_kg": float(record[column]) * KG_PER_TONNE,
+                "quantity": float(record[column]),
+                "co2e_kg": float(record[column]) * KG_PER_MT,  # workbook values are Mt CO₂e
             })
 
     df = pd.DataFrame(rows)
     df["id"] = range(1, len(df) + 1)
     df = _add_derived_columns(df)
     df.attrs["data_quality_issues"] = list(WORKBOOK_DATA_QUALITY_ISSUES)
-    return df.sort_values("date", ascending=False).reset_index(drop=True)
+
+    panel = workbook[["company", "date"]].assign(
+        S1=workbook["scope1_mt_co2e"],
+        S2=workbook["scope2_location_mt_co2e"],
+        I=workbook["scope1_mt_co2e"] + workbook["scope2_location_mt_co2e"],
+        **{name: workbook[column] for name, column in WORKBOOK_DRIVER_COLUMNS.items()},
+    )
+    panel["P"] *= workbook["days_in_month"]  # kboe/d → kboe per month
+    return df.sort_values("date", ascending=False).reset_index(drop=True), panel
+
+
+def _cached_workbook() -> tuple[pd.DataFrame, pd.DataFrame]:
+    modified_ns = CARBON_EMISSION_DATA_PATH.stat().st_mtime_ns
+    return _read_workbook(str(CARBON_EMISSION_DATA_PATH), modified_ns)
 
 
 def _load_workbook_emissions() -> pd.DataFrame:
-    modified_ns = CARBON_EMISSION_DATA_PATH.stat().st_mtime_ns
     # Callers may add columns, so never hand out the cached frame itself.
-    return _read_workbook(str(CARBON_EMISSION_DATA_PATH), modified_ns).copy()
+    return _cached_workbook()[0].copy()
+
+
+def load_stirpat_panel() -> pd.DataFrame:
+    """
+    Company-month STIRPAT panel: ``company``, ``date``, emissions in Mt CO₂e
+    (``S1``, ``S2`` and their total ``I``) and the drivers ``P``, ``A``, ``T``.
+    Empty when the workbook is absent.
+    """
+    if not CARBON_EMISSION_DATA_PATH.exists():
+        return pd.DataFrame()
+    return _cached_workbook()[1].copy()
 
 
 def load_database_emissions(status: str = "approved") -> pd.DataFrame:

@@ -1,24 +1,17 @@
 """
 Page 2 – What-If Simulator
-Interactive sliders to explore emission reduction scenarios + AI chatbot.
+Interactive sliders to explore emission reduction scenarios + AI scenario analysis.
 """
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils.ai_helper import chat_response, get_whatif_recommendation
+from utils.ai_helper import get_whatif_recommendation
 from utils.analytics import scope_totals
-from utils.carbon_calculator import KG_PER_TONNE, carbon_tax, kg_to_tonnes, share_pct
+from utils.carbon_calculator import KG_PER_MT, carbon_tax, kg_to_mt, share_pct
 from utils.charts import AMBER, BLUE, GREEN, GRID_AXIS, HEADING, RED, apply_layout
 from utils.config import GEMINI_MODEL_LABEL
 from utils.simulation import SCOPE1_LEVERS, SCOPE2_LEVERS, Lever, describe_changes, simulate_emissions
 from utils.ui import Page
-
-CHAT_SUGGESTIONS = (
-    "What is the most impactful lever to reduce Scope 2 emissions?",
-    "How can we achieve a 30% carbon reduction in 2 years?",
-    "What is the payback period for solar PV installation in Malaysia?",
-    "Explain the difference between carbon credits and carbon tax.",
-)
 
 
 class WhatIfSimulator(Page):
@@ -58,7 +51,6 @@ class WhatIfSimulator(Page):
             self.render_results(df_sim)
         self.render_comparison(df_sim)
         self.render_scenario_analysis(describe_changes(lever_values))
-        self.render_chatbot()
 
     @staticmethod
     def lever_group_header(title: str, color: str, style: str = "") -> None:
@@ -83,7 +75,7 @@ class WhatIfSimulator(Page):
           <div style='display:flex;justify-content:space-between;align-items:center;'>
             <div>
               <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;'>{label}</div>
-              <div style='color:{color};font-size:1.35rem;font-weight:700;margin-top:0.15rem;font-family:Outfit,sans-serif;'>{value}</div>
+              <div style='color:{color};font-size:1.35rem;font-weight:700;margin-top:0.15rem;font-family:Poppins,sans-serif;'>{value}</div>
             </div>
             <div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;'>{sub}</div>
           </div>
@@ -95,16 +87,16 @@ class WhatIfSimulator(Page):
         arrow = "▼" if reduction_kg > 0 else ("▲" if reduction_kg < 0 else "—")
         arrow_color = GREEN if reduction_kg > 0 else RED
         results = (
-            ("Simulated Total CO₂e", f"{kg_to_tonnes(simulated.total_kg):,.1f} t",
-             f"Baseline: {kg_to_tonnes(baseline.total_kg):,.1f} t", HEADING),
+            ("Simulated Total CO₂e", f"{kg_to_mt(simulated.total_kg):,.2f} Mt",
+             f"Baseline: {kg_to_mt(baseline.total_kg):,.2f} Mt", HEADING),
             ("Emission Reduction", f"{arrow} {self.reduction_pct:.1f}%",
-             f"{kg_to_tonnes(abs(reduction_kg)):,.1f} tonnes saved", arrow_color),
+             f"{kg_to_mt(abs(reduction_kg)):,.2f} Mt saved", arrow_color),
             ("New Tax Liability", f"MYR {carbon_tax(simulated.total_kg):,.0f}",
              f"Saving MYR {self.tax_saved_myr:,.0f}", BLUE),
-            ("Scope 1 Simulated", f"{kg_to_tonnes(simulated.scope1_kg):,.1f} t",
-             f"Down from {kg_to_tonnes(baseline.scope1_kg):,.1f} t", AMBER),
-            ("Scope 2 Simulated", f"{kg_to_tonnes(simulated.scope2_kg):,.1f} t",
-             f"Down from {kg_to_tonnes(baseline.scope2_kg):,.1f} t", BLUE),
+            ("Scope 1 Simulated", f"{kg_to_mt(simulated.scope1_kg):,.2f} Mt",
+             f"Down from {kg_to_mt(baseline.scope1_kg):,.2f} Mt", AMBER),
+            ("Scope 2 Simulated", f"{kg_to_mt(simulated.scope2_kg):,.2f} Mt",
+             f"Down from {kg_to_mt(baseline.scope2_kg):,.2f} Mt", BLUE),
         )
         for result in results:
             self.result_card(*result)
@@ -115,11 +107,11 @@ class WhatIfSimulator(Page):
         if not by_source.empty:
             fig_src = go.Figure(go.Bar(
                 x=by_source["source"],
-                y=by_source["reduction"] / KG_PER_TONNE,
+                y=by_source["reduction"] / KG_PER_MT,
                 marker_color=[GREEN if v > 0 else RED for v in by_source["reduction"]],
             ))
             apply_layout(fig_src, 260,
-                         title="Emission Reduction by Source (tonnes CO₂e)", yaxis_title="Reduction (tonnes)",
+                         title="Emission Reduction by Source (Mt CO₂e)", yaxis_title="Reduction (Mt)",
                          xaxis={**GRID_AXIS, "tickangle": -30})
             st.plotly_chart(fig_src, width="stretch")
 
@@ -128,7 +120,7 @@ class WhatIfSimulator(Page):
         st.write(
             "Visualizes the timeline variance between baseline historical emissions and the simulated reduction scenario over all recorded monthly periods."
         )
-        monthly = df_sim.groupby("month")[["co2e_kg", "co2e_kg_sim"]].sum() / KG_PER_TONNE
+        monthly = df_sim.groupby("month")[["co2e_kg", "co2e_kg_sim"]].sum() / KG_PER_MT
         fig_comp = go.Figure()
         fig_comp.add_trace(go.Scatter(
             x=monthly.index, y=monthly["co2e_kg"],
@@ -143,7 +135,7 @@ class WhatIfSimulator(Page):
             mode="lines+markers", marker=dict(size=5),
         ))
         apply_layout(fig_comp, 350,
-                     title="Monthly CO₂e: Baseline vs Simulated Scenario (tonnes)", yaxis_title="Tonnes CO₂e")
+                     title="Monthly CO₂e: Baseline vs Simulated Scenario (Mt)", yaxis_title="Million tonnes CO₂e (Mt)")
         st.plotly_chart(fig_comp, width="stretch")
         self.observation("Notice how Scope 2 levers (Renewable Energy Share and Efficiency Gains) produce compound reductions during peak operational months.")
 
@@ -152,12 +144,12 @@ class WhatIfSimulator(Page):
         baseline, simulated = self.baseline, self.simulated
         scenario_text = (
             f"Applied changes: {', '.join(changes_applied) if changes_applied else 'No changes (baseline)'}\n"
-            f"Baseline Total CO₂e: {kg_to_tonnes(baseline.total_kg):,.1f} tonnes\n"
-            f"Simulated Total CO₂e: {kg_to_tonnes(simulated.total_kg):,.1f} tonnes\n"
-            f"Reduction: {self.reduction_pct:.1f}% ({kg_to_tonnes(abs(self.reduction_kg)):,.1f} tonnes)\n"
+            f"Baseline Total CO₂e: {kg_to_mt(baseline.total_kg):,.2f} Mt\n"
+            f"Simulated Total CO₂e: {kg_to_mt(simulated.total_kg):,.2f} Mt\n"
+            f"Reduction: {self.reduction_pct:.1f}% ({kg_to_mt(abs(self.reduction_kg)):,.2f} Mt)\n"
             f"Carbon Tax Saving: MYR {self.tax_saved_myr:,.0f}\n"
-            f"Scope 1 Reduction: {kg_to_tonnes(baseline.scope1_kg - simulated.scope1_kg):,.1f} tonnes\n"
-            f"Scope 2 Reduction: {kg_to_tonnes(baseline.scope2_kg - simulated.scope2_kg):,.1f} tonnes"
+            f"Scope 1 Reduction: {kg_to_mt(baseline.scope1_kg - simulated.scope1_kg):,.2f} Mt\n"
+            f"Scope 2 Reduction: {kg_to_mt(baseline.scope2_kg - simulated.scope2_kg):,.2f} Mt"
         )
 
         self.section_title("🤖 AI Scenario Analysis")
@@ -170,57 +162,6 @@ class WhatIfSimulator(Page):
             else:
                 self.muted_text("❗ Adjust the sliders above to explore emission reduction scenarios, "
                                 "then click Analyse to get AI recommendations.", size="0.88rem")
-
-    # ── AI chatbot ─────────────────────────────────────────────────────────────
-    @staticmethod
-    def ask_chatbot(question: str) -> str:
-        """Send a question with the running history and record both turns."""
-        reply = chat_response(st.session_state.chat_gemini_history, question)
-        st.session_state.chat_history += [
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": reply},
-        ]
-        st.session_state.chat_gemini_history += [
-            {"role": "user", "parts": [question]},
-            {"role": "model", "parts": [reply]},
-        ]
-        return reply
-
-    def render_chatbot(self) -> None:
-        st.session_state.setdefault("chat_history", [])          # for display
-        st.session_state.setdefault("chat_gemini_history", [])   # in Gemini's format
-
-        self.section_title("💬 AI Sustainability Chatbot")
-        with st.expander("Ask the AI Chatbot for Recommendations", expanded=True):
-            self.muted_text("Ask about emission reduction strategies, efficiency benchmarks, carbon market options, "
-                            "Malaysia regulations, or anything related to your sustainability journey.", size="0.82rem")
-
-            self.muted_text("💡 Suggested questions:", size="0.75rem")
-            suggestion_cols = st.columns(2)
-            for i, suggestion in enumerate(CHAT_SUGGESTIONS):
-                with suggestion_cols[i % 2]:
-                    if st.button(f"↗ {suggestion}", key=f"sug_{i}", width="stretch"):
-                        with st.spinner("Thinking…"):
-                            self.ask_chatbot(suggestion)
-                        st.rerun()
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            for message in st.session_state.chat_history:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-
-            user_input = st.chat_input("Ask the AI anything about carbon reduction…")
-            if user_input:
-                with st.chat_message("user"):
-                    st.markdown(user_input)
-                with st.chat_message("assistant"):
-                    with st.spinner("Thinking…"):
-                        st.markdown(self.ask_chatbot(user_input))
-
-            if st.session_state.chat_history and st.button("🗑️ Clear Chat", key="clear_chat"):
-                st.session_state.chat_history = []
-                st.session_state.chat_gemini_history = []
-                st.rerun()
 
 
 WhatIfSimulator().run()

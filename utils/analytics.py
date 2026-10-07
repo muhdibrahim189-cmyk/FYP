@@ -10,11 +10,12 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, r2_score
 
-from utils.carbon_calculator import KG_PER_TONNE, yoy_change
+from utils.carbon_calculator import KG_PER_MT, yoy_change
 from utils.config import (
-    ANOMALY_MIN_HISTORY, ANOMALY_Z_THRESHOLD, FORECAST_MIN_POINTS, FORECAST_MONTHS,
+    ANOMALY_MIN_HISTORY, ANOMALY_Z_THRESHOLD, FORECAST_MONTHS, STIRPAT_RIDGE_ALPHA, STIRPAT_TRAIN_SHARE,
 )
 
 # Leading characters that make spreadsheet apps evaluate a cell as a formula.
@@ -37,10 +38,10 @@ def scope_totals(df: pd.DataFrame, value_column: str = "co2e_kg") -> ScopeTotals
     )
 
 
-def grouped_tonnes(df: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
-    """Sum ``co2e_kg`` per group and add a ``co2e_tonnes`` column."""
+def grouped_mt(df: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    """Sum ``co2e_kg`` per group and add a ``co2e_mt`` column (million tonnes)."""
     grp = df.groupby(keys)["co2e_kg"].sum().reset_index()
-    grp["co2e_tonnes"] = grp["co2e_kg"] / KG_PER_TONNE
+    grp["co2e_mt"] = grp["co2e_kg"] / KG_PER_MT
     return grp
 
 
@@ -48,21 +49,14 @@ def monthly_summary(df: pd.DataFrame) -> pd.DataFrame:
     """Return monthly totals by scope."""
     if df.empty:
         return pd.DataFrame()
-    return grouped_tonnes(df, ["month", "scope"])
-
-
-def source_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """Return total CO₂e by source, largest first."""
-    if df.empty:
-        return pd.DataFrame()
-    return grouped_tonnes(df, ["source", "scope"]).sort_values("co2e_kg", ascending=False)
+    return grouped_mt(df, ["month", "scope"])
 
 
 def facility_summary(df: pd.DataFrame) -> pd.DataFrame:
     """Return total CO₂e by facility and month."""
     if df.empty:
         return pd.DataFrame()
-    return grouped_tonnes(df, ["facility", "month"])
+    return grouped_mt(df, ["facility", "month"])
 
 
 # ── Filtering & search ─────────────────────────────────────────────────────────
@@ -122,26 +116,95 @@ def period_over_period_change(df: pd.DataFrame) -> float:
     return yoy_change(current_kg, prior_kg)
 
 
-def forecast_monthly_totals(df: pd.DataFrame, periods: int = FORECAST_MONTHS) -> pd.DataFrame:
-    """
-    Fit a linear trend to monthly totals and project ``periods`` months ahead.
-    Returns columns ``Month`` and ``Predicted`` (tonnes), or an empty frame
-    when there is too little history.
-    """
-    monthly = monthly_summary(df)
-    if monthly.empty:
-        return pd.DataFrame()
-    totals = monthly.groupby("month")["co2e_tonnes"].sum().reset_index()
-    if len(totals) < FORECAST_MIN_POINTS:
-        return pd.DataFrame()
+STIRPAT_DRIVERS = ("P", "A", "T")
 
-    totals["idx"] = range(len(totals))
-    model = LinearRegression().fit(totals[["idx"]], totals["co2e_tonnes"])
-    future_idx = pd.DataFrame({"idx": range(len(totals), len(totals) + periods)})
 
-    last_month = pd.Period(totals["month"].iloc[-1], freq="M")
-    future_months = [(last_month + step).strftime("%Y-%m") for step in range(1, periods + 1)]
-    return pd.DataFrame({"Month": future_months, "Predicted": model.predict(future_idx)})
+@dataclass(frozen=True)
+class StirpatResult:
+    test: pd.DataFrame       # Month, Actual, Predicted – held-out months, selected companies
+    forecast: pd.DataFrame   # Month, Predicted – the months after the data, selected companies
+    train_end: str           # last training month (YYYY-MM)
+    train_r2: float
+    test_r2: float
+    test_mape_pct: float
+    test_rmse: float
+    coefficients: dict[str, float]  # elasticities of I to P, A, T
+
+
+def _stirpat_design(panel: pd.DataFrame, companies: list[str]) -> pd.DataFrame:
+    """ln P, ln A, ln T plus one dummy per company (company-specific ln α)."""
+    dummies = pd.get_dummies(pd.Categorical(panel["company"], categories=companies),
+                             drop_first=True, dtype=float)
+    dummies.index = panel.index
+    return pd.concat([np.log(panel[list(STIRPAT_DRIVERS)]), dummies], axis=1)
+
+
+def _monthly_totals(frame: pd.DataFrame, companies: Iterable[str], column: str) -> pd.Series:
+    picked = frame[frame["company"].isin(list(companies))]
+    totals = picked.groupby("date")[column].sum()
+    totals.index = totals.index.strftime("%Y-%m")
+    return totals
+
+
+def stirpat_forecast(panel: pd.DataFrame, companies: Iterable[str], target: str = "I",
+                     periods: int = FORECAST_MONTHS) -> StirpatResult | None:
+    """
+    STIRPAT model (Dietz & Rosa, 1994) on the company-month panel, where I is
+    the ``target`` column (e.g. Scope 1, Scope 2 or their total):
+
+        ln I = ln α_company + a·ln P + b·ln A + c·ln T + ln e
+
+    fitted by ridge regression for the collinear drivers (Kong et al., 2023).
+    The first STIRPAT_TRAIN_SHARE of months train the model and the rest test
+    it (chronological split, so the test months are truly unseen). The model
+    is then refitted on every month and projects ``periods`` months ahead,
+    each future driver growing at its own same-month year-on-year rate.
+    Totals are summed over ``companies``. None when there is too little data.
+    """
+    if panel.empty or periods > 12:
+        return None
+    panel = panel.sort_values(["company", "date"]).reset_index(drop=True)
+    all_companies = sorted(panel["company"].unique())
+    months = sorted(panel["date"].unique())
+    if len(months) < 24 + 2:  # two years of history to project drivers year-on-year
+        return None
+    cut = months[int(len(months) * STIRPAT_TRAIN_SHARE)]
+    train, test = panel[panel["date"] < cut], panel[panel["date"] >= cut]
+
+    def fit(frame: pd.DataFrame) -> Ridge:
+        return Ridge(alpha=STIRPAT_RIDGE_ALPHA).fit(_stirpat_design(frame, all_companies), np.log(frame[target]))
+
+    model = fit(train)
+    train_pred = np.exp(model.predict(_stirpat_design(train, all_companies)))
+    test = test.assign(pred=np.exp(model.predict(_stirpat_design(test, all_companies))))
+
+    # Future drivers: ln X(m) = 2·ln X(m − 12) − ln X(m − 24), i.e. last year's
+    # value grown by its own year-on-year change (keeps the seasonal pattern).
+    logs = np.log(panel.set_index(["company", "date"])[list(STIRPAT_DRIVERS)])
+    future_rows = []
+    for step in range(1, periods + 1):
+        month = months[-1] + pd.DateOffset(months=step)
+        year_ago = logs.xs(month - pd.DateOffset(years=1), level="date")
+        two_years_ago = logs.xs(month - pd.DateOffset(years=2), level="date")
+        future_rows.append(np.exp(2 * year_ago - two_years_ago).assign(date=month))
+    future = pd.concat(future_rows).reset_index()
+
+    final = fit(panel)
+    future["pred"] = np.exp(final.predict(_stirpat_design(future, all_companies)))
+
+    actual = _monthly_totals(test, companies, target)
+    predicted = _monthly_totals(test, companies, "pred")
+    forecast = _monthly_totals(future, companies, "pred")
+    return StirpatResult(
+        test=pd.DataFrame({"Month": actual.index, "Actual": actual.values, "Predicted": predicted.values}),
+        forecast=pd.DataFrame({"Month": forecast.index, "Predicted": forecast.values}),
+        train_end=pd.Timestamp(months[months.index(cut) - 1]).strftime("%Y-%m"),
+        train_r2=float(r2_score(train[target], train_pred)),
+        test_r2=float(r2_score(test[target], test["pred"])),
+        test_mape_pct=float(mean_absolute_percentage_error(test[target], test["pred"]) * 100),
+        test_rmse=float(np.sqrt(mean_squared_error(test[target], test["pred"]))),
+        coefficients=dict(zip(STIRPAT_DRIVERS, map(float, final.coef_[:len(STIRPAT_DRIVERS)]))),
+    )
 
 
 # ── Anomaly detection ──────────────────────────────────────────────────────────

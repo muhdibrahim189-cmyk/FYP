@@ -72,24 +72,6 @@ def _generate(prompt: str, feature: str) -> str:
     return _ask(feature, lambda model: model.generate_content(prompt).text)
 
 
-def get_dashboard_insight(summary_text: str) -> str:
-    """
-    Generate a narrative AI insight for the main dashboard.
-    summary_text: a JSON/text summary of the current emission data.
-    """
-    prompt = (
-        f"{SYSTEM_CONTEXT}\n\n"
-        f"Based on the following emission data summary, provide a 3-4 paragraph insight covering:\n"
-        f"1. What the key trends mean and WHY they occurred\n"
-        f"2. Which sources are driving the most emissions and why that matters\n"
-        f"3. Any anomalies or concerning patterns\n"
-        f"4. 2-3 specific, actionable next steps\n\n"
-        f"Data:\n{summary_text}\n\n"
-        f"Write in a clear, professional tone suitable for a sustainability report."
-    )
-    return _generate(prompt, "AI insights")
-
-
 def get_whatif_recommendation(scenario_text: str) -> str:
     """Generate a recommendation for a what-if scenario."""
     prompt = (

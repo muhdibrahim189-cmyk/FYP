@@ -6,6 +6,7 @@ import math
 from data.emission_factors import ALL_FACTORS, CARBON_TAX_RATE_MYR
 
 KG_PER_TONNE = 1000
+KG_PER_MT = 1_000_000_000  # kg in one million tonnes (Mt)
 
 
 def _require_non_negative(value: float, message: str) -> None:
@@ -26,6 +27,10 @@ def calculate_emission(source: str, quantity: float) -> float:
 
 def kg_to_tonnes(kg: float) -> float:
     return round(kg / KG_PER_TONNE, 6)
+
+
+def kg_to_mt(kg: float) -> float:
+    return kg / KG_PER_MT
 
 
 def carbon_tax(kg_co2e: float, rate_myr: float = CARBON_TAX_RATE_MYR) -> float:

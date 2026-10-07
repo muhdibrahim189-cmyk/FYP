@@ -84,12 +84,26 @@ class DataManagerTests(unittest.TestCase):
 
 
 class WorkbookTests(unittest.TestCase):
-    def test_workbook_rows_become_two_scopes_per_company_year(self):
+    def test_workbook_rows_become_two_scopes_per_company_month(self):
         if not data_manager.CARBON_EMISSION_DATA_PATH.exists():
             self.skipTest("workbook not present")
         df = data_manager.load_emissions()
         self.assertEqual(set(df["scope"]), {1, 2})
         self.assertTrue(df.attrs["data_quality_issues"])
+
+    def test_stirpat_panel_has_one_row_per_company_month(self):
+        if not data_manager.CARBON_EMISSION_DATA_PATH.exists():
+            self.skipTest("workbook not present")
+        panel = data_manager.load_stirpat_panel()
+        self.assertEqual(len(panel), len(data_manager.load_emissions()) // 2)
+        self.assertFalse(panel[["I", "S1", "S2", "P", "A", "T"]].le(0).any().any())  # logs need positive values
+
+    def test_workbook_emissions_are_million_tonnes(self):
+        if not data_manager.CARBON_EMISSION_DATA_PATH.exists():
+            self.skipTest("workbook not present")
+        panel = data_manager.load_stirpat_panel()
+        total_kg = data_manager.load_emissions()["co2e_kg"].sum()
+        self.assertAlmostEqual(total_kg / 1e9, panel["I"].sum(), places=6)  # 1 Mt = 10⁹ kg
 
     def test_companies_match_workbook(self):
         if not data_manager.CARBON_EMISSION_DATA_PATH.exists():

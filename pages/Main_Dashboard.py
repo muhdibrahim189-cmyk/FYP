@@ -1,32 +1,36 @@
 """
 Page 1 – Main Dashboard
-Scope 1 & 2 KPI cards, trend charts, carbon tax, prediction, AI insight.
+Scope 1 & 2 KPI cards, trend charts with a STIRPAT forecast, carbon tax.
 """
-from html import escape
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from data.emission_factors import CARBON_TAX_RATE_MYR, EMPLOYEES, REVENUE_MYR
-from utils.ai_helper import get_dashboard_insight
+from data.emission_factors import CARBON_TAX_RATE_MYR
 from utils.analytics import (
-    facility_summary, filter_emissions, forecast_monthly_totals, grouped_tonnes, monthly_summary,
-    period_over_period_change, scope_totals, source_summary,
+    facility_summary, filter_emissions, grouped_mt, monthly_summary, period_over_period_change,
+    scope_totals, stirpat_forecast,
 )
 from utils.carbon_calculator import (
-    carbon_tax, emission_intensity_employee, emission_intensity_revenue, kg_to_tonnes, share_pct,
+    KG_PER_TONNE, kg_to_mt, share_pct,
 )
 from utils.charts import (
-    AMBER, BLUE, HEADING, SCOPE_COLORS, apply_layout,
+    AMBER, BLUE, GREEN, HEADING, HOVER_FORMAT, SCOPE_COLORS, apply_layout,
 )
-from utils.config import FORECAST_MONTHS, GEMINI_MODEL_LABEL
-from utils.data_manager import load_emissions
+from utils.config import FORECAST_MONTHS, STIRPAT_TRAIN_SHARE
+from utils.data_manager import load_emissions, load_stirpat_panel
 from utils.ui import Page
 
 SCOPE_FILL_COLORS = {1: "rgba(217,119,6,0.06)", 2: "rgba(37,99,235,0.06)"}
+TOTAL_COLOR = "#64748b"
+# STIRPAT models: panel column, label, line colour, scopes it covers.
+STIRPAT_TARGETS = (
+    ("S1", "Scope 1", SCOPE_COLORS[1], {1}),
+    ("S2", "Scope 2", SCOPE_COLORS[2], {2}),
+    ("I", "Total (Scope 1 + 2)", TOTAL_COLOR, {1, 2}),
+)
 
 
 class MainDashboard(Page):
@@ -70,32 +74,25 @@ class MainDashboard(Page):
 
         # One scrolling page: every chart section follows the previous one.
         self.monthly = monthly_summary(df)
-        self.src_summary = source_summary(df)
-        self.section_title("📉 Monthly Trend & Forecast")
+        self.section_title("📉 Monthly Trend & STIRPAT Forecast")
         self.render_trend_section()
-        self.section_title("🥧 Emissions by Source")
-        self.render_source_section(self.src_summary)
         self.section_title("🏭 Facility Heatmap & Trellis")
         self.render_facility_section()
         self.section_title("💰 Carbon Tax Analysis")
         self.render_tax_section()
 
-        self.render_ai_panel()
         self.footer()
 
     # ── KPI cards ──────────────────────────────────────────────────────────────
     def render_kpis(self) -> None:
         totals = scope_totals(self.df)
-        self.total_t = kg_to_tonnes(totals.total_kg)
-        self.s1_t = kg_to_tonnes(totals.scope1_kg)
-        self.s2_t = kg_to_tonnes(totals.scope2_kg)
+        self.total_t = kg_to_mt(totals.total_kg)
+        self.s1_t = kg_to_mt(totals.scope1_kg)
+        self.s2_t = kg_to_mt(totals.scope2_kg)
         self.s1_share = share_pct(self.s1_t, self.total_t)
         self.s2_share = share_pct(self.s2_t, self.total_t)
-        self.tax_liab = carbon_tax(totals.total_kg, self.tax_rate)
-        self.intensity_rev = emission_intensity_revenue(totals.total_kg, REVENUE_MYR)
-        self.intensity_emp = emission_intensity_employee(totals.total_kg, EMPLOYEES)
 
-        change_pct = self.change_pct = period_over_period_change(self.df)
+        change_pct = period_over_period_change(self.df)
         if change_pct > 0:
             delta_class, delta_icon = "delta-up", "▲"
         elif change_pct < 0:
@@ -104,10 +101,10 @@ class MainDashboard(Page):
             delta_class, delta_icon = "delta-neu", "—"
 
         cards = (
-            ("Total CO₂e", f"{self.total_t:,.1f}", "tonnes",
+            ("Total CO₂e", f"{self.total_t:,.2f}", "million tonnes (Mt)",
              f"{delta_icon} {abs(change_pct):.1f}% vs prior period", delta_class, HEADING),
-            ("Scope 1", f"{self.s1_t:,.1f}", "tonnes CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
-            ("Scope 2", f"{self.s2_t:,.1f}", "tonnes CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
+            ("Scope 1", f"{self.s1_t:,.2f}", "Mt CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
+            ("Scope 2", f"{self.s2_t:,.2f}", "Mt CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
             ("—", "—", "", "Coming soon", "delta-neu", HEADING),  # placeholder slot
         )
         for col, (label, value, caption, delta, d_cls, color) in zip(st.columns(len(cards), gap="small"), cards):
@@ -118,9 +115,11 @@ class MainDashboard(Page):
     def render_trend_section(self) -> None:
         st.write(
             "Traces monthly GHG emissions across **Scope 1 (Direct)** and **Scope 2 (Indirect Electricity)**, "
-            f"alongside an automated linear regression projection for the upcoming {FORECAST_MONTHS} months."
+            f"with **STIRPAT** models projecting each scope and the total {FORECAST_MONTHS} months ahead from "
+            "production (P), revenue (A) and energy intensity (T)."
         )
-        pivot = self.monthly.pivot_table(index="month", columns="scope", values="co2e_tonnes", fill_value=0)
+        pivot = self.monthly.pivot_table(index="month", columns="scope", values="co2e_mt", fill_value=0)
+        actual = {"S1": pivot.get(1), "S2": pivot.get(2), "I": pivot.sum(axis=1)}
 
         fig = go.Figure()
         for scope_num in (1, 2):
@@ -129,67 +128,78 @@ class MainDashboard(Page):
                     x=pivot.index, y=pivot[scope_num], name=f"Scope {scope_num}",
                     line=dict(color=SCOPE_COLORS[scope_num], width=2.5),
                     fill="tozeroy", fillcolor=SCOPE_FILL_COLORS[scope_num],
-                    mode="lines+markers", marker=dict(size=6),
+                    mode="lines+markers", marker=dict(size=5),
                 ))
+        if len(pivot.columns) == 2:
+            fig.add_trace(go.Scatter(x=pivot.index, y=actual["I"], name="Total (Scope 1 + 2)",
+                                     line=dict(color=TOTAL_COLOR, width=2.5), mode="lines"))
 
-        # The forecast deliberately uses the unfiltered history for a stable trend.
-        forecast = forecast_monthly_totals(self.df_all)
-        if not forecast.empty:
+        # One model per selected scope, plus the total when both scopes are shown.
+        panel = load_stirpat_panel()
+        results = {}
+        for target, label, color, scopes in STIRPAT_TARGETS:
+            if not scopes <= set(self.scope_opts):
+                continue
+            result = stirpat_forecast(panel, self.sel_fac, target=target)
+            if result is None:
+                continue
+            results[label] = result
+            series = actual[target]
+            # Start each forecast at the last actual month so the lines connect.
             fig.add_trace(go.Scatter(
-                x=forecast["Month"], y=forecast["Predicted"],
-                name=f"AI Prediction ({FORECAST_MONTHS}M)",
-                line=dict(color="#059669", width=2.2, dash="dash"),
+                x=[series.index[-1], *result.forecast["Month"]],
+                y=[series.iloc[-1], *result.forecast["Predicted"]],
+                name=f"{label} forecast",
+                line=dict(color=color, width=2.5, dash="dash"),
                 mode="lines+markers", marker=dict(size=6, symbol="diamond"),
             ))
+        if results:
+            forecast_months = next(iter(results.values())).forecast["Month"]
+            fig.add_vrect(x0=pivot.index[-1], x1=forecast_months.iloc[-1],
+                          fillcolor=GREEN, opacity=0.06, line_width=0,
+                          annotation_text="STIRPAT forecast", annotation_position="top left")
 
-        apply_layout(fig, 400,
-                     title=f"Monthly CO₂e Emissions by Scope (tonnes) + {FORECAST_MONTHS}-Month Trajectory",
-                     yaxis_title="Tonnes CO₂e")
+        apply_layout(fig, 450,
+                     title=f"Monthly CO₂e Emissions by Scope (Mt) + {FORECAST_MONTHS}-Month STIRPAT Forecast",
+                     yaxis_title="Million tonnes CO₂e (Mt)")
         st.plotly_chart(fig, width="stretch")
+
+        if results:
+            self.render_stirpat_accuracy(results)
         self.observation(
             f"Scope 2 emissions comprise {self.s2_share:.1f}% of your organization's footprint. "
             f"Notice peak consumption cycles and compare with the upcoming {FORECAST_MONTHS}-month forecast trajectory."
         )
 
     @staticmethod
-    def render_source_row(row: pd.Series, total_tonnes: float) -> None:
-        badge_color = SCOPE_COLORS.get(row["scope"], BLUE)
-        st.markdown(f"""
-        <div style='display:flex;justify-content:space-between;align-items:center;
-            padding:0.6rem 0.9rem;margin:0.35rem 0;border-radius:8px;
-            background:var(--ct-surface);border:1px solid var(--ct-border);box-shadow:0 1px 2px rgba(0,0,0,0.03);'>
-          <div>
-            <span style='background:{badge_color}18;color:{badge_color};font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:4px;'>S{row["scope"]}</span>
-            <span style='color:var(--ct-text);font-size:0.84rem;font-weight:600;margin-left:0.4rem;'>{escape(str(row["source"]))}</span>
-          </div>
-          <div style='text-align:right;'>
-            <span style='color:var(--ct-heading);font-weight:700;font-size:0.88rem;'>{row["co2e_tonnes"]:,.1f}t</span>
-            <span style='color:var(--ct-muted);font-size:0.75rem;margin-left:0.3rem;'>({share_pct(row["co2e_tonnes"], total_tonnes):.1f}%)</span>
-          </div>
-        </div>""", unsafe_allow_html=True)
-
-    def render_source_section(self, sources: pd.DataFrame) -> None:
-        st.write(
-            "Shows proportional breakdown of carbon emissions categorized by origin activity source. "
-            "Hover over individual sectors for exact tonnage and percentage contributions."
+    def render_stirpat_accuracy(results: dict) -> None:
+        """Test-set accuracy of each STIRPAT model (months it never saw in training)."""
+        st.markdown("**STIRPAT model accuracy (test set)**")
+        table = pd.DataFrame([
+            {
+                "Model": label,
+                "Train R²": r.train_r2,
+                "Test R²": r.test_r2,
+                "MAPE (%)": r.test_mape_pct,
+                "Accuracy (%)": 100 - r.test_mape_pct,
+                "RMSE (Mt)": r.test_rmse,
+                "a (ln P)": r.coefficients["P"],
+                "b (ln A)": r.coefficients["A"],
+                "c (ln T)": r.coefficients["T"],
+            }
+            for label, r in results.items()
+        ])
+        st.dataframe(table, hide_index=True, width="stretch",
+                     column_config={col: st.column_config.NumberColumn(format="%.4f")
+                                    for col in table.columns if col != "Model"})
+        first = next(iter(results.values()))
+        test_months = first.test["Month"]
+        st.caption(
+            "ln I = ln α + a·ln P + b·ln A + c·ln T, fitted by ridge regression with a company-specific α. "
+            f"Trained on months up to {first.train_end} ({STIRPAT_TRAIN_SHARE:.0%}), tested on "
+            f"{test_months.iloc[0]} – {test_months.iloc[-1]}. Accuracy = 100% − MAPE; MAPE and RMSE are per "
+            "company-month. Future drivers grow at their year-on-year rate."
         )
-        fig = px.pie(
-            sources, values="co2e_tonnes", names="source",
-            color_discrete_sequence=px.colors.qualitative.T10, hole=0.45,
-            title="CO₂e Distribution by Emission Source",
-        )
-        apply_layout(fig, 430)
-        fig.update_traces(textposition="outside", textinfo="percent+label")
-
-        c_left, c_right = st.columns([1.2, 1])
-        with c_left:
-            st.plotly_chart(fig, width="stretch")
-        with c_right:
-            self.section_title("Top Emission Sources", style="margin-top:1rem;")
-            total_tonnes = sources["co2e_tonnes"].sum()
-            for _, row in sources.head(6).iterrows():
-                self.render_source_row(row, total_tonnes)
-        self.observation("Identify the largest contributing sources to prioritize for targeted decarbonization measures.")
 
     def render_facility_section(self) -> None:
         st.write(
@@ -197,22 +207,24 @@ class MainDashboard(Page):
             "while the monthly matrix heatmap pinpoints temporal intensity variations across operations."
         )
         fac = facility_summary(self.df)
-        fac_total = grouped_tonnes(fac, ["facility"]).sort_values("co2e_tonnes")
+        fac_total = grouped_mt(fac, ["facility"]).sort_values("co2e_mt")
         fig_bar = px.bar(
-            fac_total, x="co2e_tonnes", y="facility", orientation="h",
-            color="co2e_tonnes", color_continuous_scale=px.colors.sequential.Blues,
-            title="Total CO₂e by Facility (tonnes)",
-            labels={"co2e_tonnes": "Tonnes CO₂e", "facility": ""},
+            fac_total, x="co2e_mt", y="facility", orientation="h",
+            color="co2e_mt", color_continuous_scale=px.colors.sequential.Blues,
+            title="Total CO₂e by Facility (Mt)",
+            labels={"co2e_mt": "Mt CO₂e", "facility": ""},
         )
         apply_layout(fig_bar, 360, coloraxis_showscale=False)
+        fig_bar.update_traces(hovertemplate=f"%{{y}}<br>%{{x:{HOVER_FORMAT}}} Mt CO₂e<extra></extra>")
         st.plotly_chart(fig_bar, width="stretch")
 
-        fac_pivot = fac.pivot_table(index="facility", columns="month", values="co2e_tonnes", fill_value=0)
+        fac_pivot = fac.pivot_table(index="facility", columns="month", values="co2e_mt", fill_value=0)
         fig_heat = px.imshow(
             fac_pivot, color_continuous_scale=px.colors.sequential.Blues,
-            title="Emission Heatmap: Facility × Month (tonnes CO₂e)", aspect="auto",
+            title="Emission Heatmap: Facility × Month (Mt CO₂e)", aspect="auto",
         )
         apply_layout(fig_heat, 320)
+        fig_heat.update_traces(hovertemplate=f"%{{y}} · %{{x}}<br>%{{z:{HOVER_FORMAT}}} Mt CO₂e<extra></extra>")
         st.plotly_chart(fig_heat, width="stretch")
         self.observation("Darker blue cells indicate higher monthly facility output. Monitor sites with sudden spikes across consecutive months.")
 
@@ -222,8 +234,8 @@ class MainDashboard(Page):
             "Dual-axis projection correlates monthly recurring fees against cumulative tax accumulation."
         )
         tax_rate = self.tax_rate
-        monthly_total = grouped_tonnes(self.monthly, ["month"])
-        monthly_total["tax_myr"] = monthly_total["co2e_tonnes"] * tax_rate
+        monthly_total = grouped_mt(self.monthly, ["month"])
+        monthly_total["tax_myr"] = monthly_total["co2e_kg"] / KG_PER_TONNE * tax_rate
         monthly_total["cumulative_tax"] = monthly_total["tax_myr"].cumsum()
 
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -246,34 +258,10 @@ class MainDashboard(Page):
           <div style='color:#dc2626;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'>
             Total Estimated Carbon Tax Liability
           </div>
-          <div style='color:var(--ct-heading);font-size:1.8rem;font-weight:700;margin-top:0.2rem;font-family:Outfit,sans-serif;'>MYR {monthly_total['tax_myr'].sum():,.2f}</div>
+          <div style='color:var(--ct-heading);font-size:1.8rem;font-weight:700;margin-top:0.2rem;font-family:Poppins,sans-serif;'>MYR {monthly_total['tax_myr'].sum():,.2f}</div>
           <div style='color:var(--ct-muted);font-size:0.75rem;'>Based on filtered period · Statutory reference rate: MYR {tax_rate:.0f} / tonne CO₂e</div>
         </div>""", unsafe_allow_html=True)
         self.observation("Financial liability scales linearly with tonnage. Early decarbonization initiatives directly mitigate bottom-line tax risks.")
-
-    # ── AI insight panel ───────────────────────────────────────────────────────
-    def render_ai_panel(self) -> None:
-        self.section_title("🤖 AI Insights & Recommendations")
-        df = self.df
-        summary_text = f"""
-Period: {df['date'].min().strftime('%b %Y')} to {df['date'].max().strftime('%b %Y')}
-Total CO₂e: {self.total_t:,.1f} tonnes
-Scope 1: {self.s1_t:,.1f} t ({self.s1_share:.1f}%)
-Scope 2: {self.s2_t:,.1f} t ({self.s2_share:.1f}%)
-Carbon Tax Liability: MYR {self.tax_liab:,.0f}
-Period-on-Period Change: {self.change_pct:+.1f}%
-Revenue Intensity: {self.intensity_rev:.3f} tCO₂e/MYR 1M
-Employee Intensity: {self.intensity_emp:.3f} tCO₂e/employee
-Top 3 Sources: {', '.join(self.src_summary['source'].head(3).tolist())}
-Facilities monitored: {len(self.sel_fac)}
-"""
-        with st.container(border=True):
-            self.ai_panel_header(f"✨ AI Powered · {GEMINI_MODEL_LABEL}")
-            col_btn, _ = st.columns([1, 4])
-            with col_btn:
-                regenerate = st.button("🔄 Generate Insight", type="primary", key="gen_insight_btn")
-            self.cached_ai_text("ai_insight_cache", regenerate, "🤖 AI is analysing your emission data…",
-                                lambda: get_dashboard_insight(summary_text))
 
 
 MainDashboard().run()

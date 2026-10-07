@@ -50,6 +50,14 @@ SCOPE2_FACTORS = {
 # All factors combined for easy lookup
 ALL_FACTORS = {**SCOPE1_FACTORS, **SCOPE2_FACTORS}
 
+# Full names for the unit abbreviations above (quantity input tooltip)
+UNIT_NAMES = {
+    "GJ": "Gigajoule (GJ): energy content of the fuel, 1 GJ = 1,000 MJ",
+    "kg": "Kilogram (kg): mass of fuel consumed",
+    "L": "Litre (L): volume of fuel consumed",
+    "kWh": "Kilowatt-hour (kWh): electricity used, as shown on the utility bill",
+}
+
 # Reference grid factor quoted throughout the UI and AI prompts
 PENINSULAR_GRID_FACTOR = SCOPE2_FACTORS["Electricity – Peninsular Malaysia (TNB)"]["factor"]
 

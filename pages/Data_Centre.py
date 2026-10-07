@@ -10,7 +10,7 @@ import streamlit as st
 
 from data.emission_factors import CARBON_TAX_RATE_MYR
 from utils.analytics import filter_emissions, scope_totals, search_rows, to_safe_csv
-from utils.carbon_calculator import KG_PER_TONNE, carbon_tax, share_pct
+from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, carbon_tax, share_pct
 from utils.charts import AMBER, BLUE, HEADING, RED
 from utils.config import ALL_OPTION, DATA_TABLE_PAGE_SIZE, STATUS_LABELS
 from utils.ui import Page
@@ -19,7 +19,7 @@ PAGE_KEY = "dc_page"
 DISPLAY_COLUMNS = {
     "id": "ID", "date": "Date", "facility": "Facility",
     "scope": "Scope", "source": "Source", "unit": "Unit",
-    "quantity": "Quantity", "co2e_kg": "CO₂e (kg)",
+    "quantity": "Quantity", "co2e_kg": "CO₂e (Mt)",
     "submitted_by": "Submitted By", "submitted_at": "Submitted At",
     "status": "Status", "approved_by": "Approved By",
     "is_anomaly": "Anomaly Flag",
@@ -89,7 +89,7 @@ class DataCentre(Page):
         s1_pct = share_pct(totals.scope1_kg, totals.total_kg)
         stats = (
             ("Records Found", f"{len(self.df):,}", f"of {len(self.df_raw):,} total", HEADING),
-            ("Filtered CO₂e", f"{totals.total_kg / KG_PER_TONNE:,.1f} t", "tonnes CO₂e", BLUE),
+            ("Filtered CO₂e", f"{totals.total_kg / KG_PER_MT:,.2f} Mt", "million tonnes CO₂e", BLUE),
             ("Estimated Carbon Tax", f"MYR {carbon_tax(totals.total_kg):,.0f}", f"@ MYR {CARBON_TAX_RATE_MYR:.0f}/t", RED),
             ("Scope 1 Share", f"{s1_pct:.1f}%", "direct emissions", AMBER),
             ("Scope 2 Share", f"{100 - s1_pct:.1f}%", "indirect emissions", BLUE),
@@ -102,8 +102,8 @@ class DataCentre(Page):
     @staticmethod
     def build_display_table(records: pd.DataFrame) -> pd.DataFrame:
         table = records[list(DISPLAY_COLUMNS)].rename(columns=DISPLAY_COLUMNS)
-        table["CO₂e (kg)"] = table["CO₂e (kg)"].round(2)
-        table["Quantity"] = table["Quantity"].round(3)
+        table["CO₂e (Mt)"] = (table["CO₂e (Mt)"] / KG_PER_MT).round(4)
+        table["Quantity"] = table["Quantity"].round(4)
         table["Anomaly Flag"] = table["Anomaly Flag"].map({0: "—", 1: "⚠️ Yes"})
         table["Status"] = table["Status"].map(STATUS_LABELS).fillna(table["Status"])
         return table
@@ -153,7 +153,7 @@ class DataCentre(Page):
             <div class='ct-card' style='padding:0.8rem 1rem;'>
               <div style='color:var(--ct-muted);font-size:0.75rem;'>
                 📋 {len(export_df):,} records ·
-                {export_df['co2e_tonnes'].sum():,.1f} tCO₂e ·
+                {export_df['co2e_kg'].sum() / KG_PER_MT:,.2f} Mt CO₂e ·
                 {export_df['date'].min()} to {export_df['date'].max()}
               </div>
             </div>""", unsafe_allow_html=True)

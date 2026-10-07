@@ -1,5 +1,5 @@
 """
-app.py – Fiscal Green entry point and page router.
+app.py – Sistem Pemantauan Karbon entry point and page router.
 Run with:  streamlit run app.py
 
 Every request passes through here first: shared styles, database set-up and

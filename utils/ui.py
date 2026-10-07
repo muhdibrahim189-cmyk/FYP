@@ -11,13 +11,16 @@ import pandas as pd
 import streamlit as st
 
 from data.emission_factors import PENINSULAR_GRID_FACTOR
-from utils.auth import render_sidebar_user, require_login
-from utils.config import APP_LOGO_DATA_URI, APP_NAME, APP_PAGE_ICON, NAVIGATION_OPTIONS, PAGE_ROUTES
+from utils.ai_helper import chat_response
+from utils.auth import brand_html, render_sidebar_user, require_login
+from utils.config import (
+    APP_PAGE_ICON, APP_SHORT_NAME, CHAT_SUGGESTIONS, NAVIGATION_OPTIONS, PAGE_ROUTES,
+)
 from utils.data_manager import init_db, load_emissions
 
 FONT_IMPORT = (
-    "@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800"
-    "&family=Inter:wght@300;400;500;600;700&display=swap');"
+    "@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800"
+    "&display=swap');"
 )
 
 # Colours are tokens resolved with light-dark(): Streamlit sets ``color-scheme``
@@ -54,11 +57,11 @@ GLOBAL_CSS = """
     --ct-ok-text: light-dark(#15803d, #86efac);
     --ct-danger-border: light-dark(#fecaca, rgba(220,38,38,0.45));
 }
-* { font-family: 'Inter', sans-serif; }
+* { font-family: 'Poppins', sans-serif; }
 [data-testid='stAppViewContainer'] { background: var(--ct-bg); min-height: 100vh; }
 .main .block-container { padding-top: 1.8rem; padding-bottom: 2rem; }
 
-h1, h2, h3 { font-family: 'Outfit', 'Inter', sans-serif !important; }
+h1, h2, h3 { font-family: 'Poppins', sans-serif !important; }
 h1 { color: var(--ct-heading) !important; font-weight: 700 !important; }
 h2 { color: #2563EB !important; font-weight: 600 !important; }
 h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
@@ -87,7 +90,7 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 .ct-card:hover { border-color: #93c5fd; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(37,99,235,0.08); }
 .ct-card-value {
     font-size: 1.85rem; font-weight: 700; color: var(--ct-heading); margin: 0.2rem 0;
-    line-height: 1.1; font-family: 'Outfit', sans-serif;
+    line-height: 1.1; font-family: 'Poppins', sans-serif;
 }
 .ct-card-label {
     font-size: 0.72rem; color: var(--ct-muted); text-transform: uppercase;
@@ -101,7 +104,7 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 
 .ct-section-title {
     font-size: 1.15rem; font-weight: 700; color: var(--ct-heading); border-left: 4px solid #2563EB;
-    padding-left: 0.7rem; margin: 1.4rem 0 0.8rem; font-family: 'Outfit', sans-serif;
+    padding-left: 0.7rem; margin: 1.4rem 0 0.8rem; font-family: 'Poppins', sans-serif;
 }
 .sim-card {
     background: var(--ct-surface); border: 1px solid var(--ct-border); border-radius: 10px;
@@ -141,7 +144,7 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 .log-details { color: var(--ct-text-body); font-size: 0.76rem; flex: 1; }
 
 /* Tabs */
-[data-testid='stTabs'] [role='tab'] { color: var(--ct-muted); font-family: 'Outfit', sans-serif; font-weight: 500; }
+[data-testid='stTabs'] [role='tab'] { color: var(--ct-muted); font-family: 'Poppins', sans-serif; font-weight: 500; }
 [data-testid='stTabs'] [role='tab'][aria-selected='true'] {
     color: var(--ct-heading) !important; border-bottom-color: #2563EB !important; font-weight: 700;
 }
@@ -181,6 +184,18 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
     border: 1px solid var(--ct-border) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
+/* Floating AI chat (Page.chat_widget): round button pinned bottom-right on every page */
+.st-key-ct_chat_fab { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 999990; width: auto !important; }
+.st-key-ct_chat_fab button {
+    width: 3.6rem; height: 3.6rem; border-radius: 50% !important; border: none !important;
+    background: #2563EB !important; box-shadow: 0 6px 18px rgba(37,99,235,0.4) !important;
+}
+.st-key-ct_chat_fab button:hover { background: #1d4ed8 !important; transform: scale(1.06); }
+.st-key-ct_chat_fab button p { font-size: 1.6rem; color: white !important; }
+.st-key-ct_chat_fab button [data-testid='stIconMaterial'] { display: none; }
+[data-testid='stPopoverBody']:has(.st-key-ct_chat_panel) { width: min(380px, calc(100vw - 2rem)); max-width: none; }
+.st-key-ct_chat_panel .stButton > button { border-radius: 18px !important; font-size: 0.8rem; text-align: left; }
+
 hr { border-color: var(--ct-border) !important; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -209,12 +224,12 @@ class Page:
     with ``MyPage().run()``. The shared UI components below are inherited.
     """
 
-    name: str                               # browser tab: "<name> · Fiscal Green"
+    name: str                               # browser tab: "<name> · SPK"
     nav_label: str                          # key of PAGE_ROUTES
     header: tuple[str, str] | None = None   # (title, subtitle) shown above render()
 
     def run(self) -> None:
-        st.set_page_config(page_title=f"{self.name} · {APP_NAME}", page_icon=APP_PAGE_ICON)
+        st.set_page_config(page_title=f"{self.name} · {APP_SHORT_NAME}", page_icon=APP_PAGE_ICON)
         require_login()  # defence in depth; the router has already checked
         with st.sidebar:
             self._render_brand()
@@ -225,6 +240,7 @@ class Page:
         if self.header:
             self.page_header(*self.header)
         self.render()
+        self.chat_widget()
 
     def sidebar(self) -> None:
         """Page-specific sidebar content, shown above the user badge."""
@@ -238,8 +254,7 @@ class Page:
         st.markdown(
             f"""
             <div style='padding:0.3rem 0 0.8rem;text-align:center;'>
-              <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='height:3.5rem;'>
-              <div style='font-size:1.1rem;font-weight:700;color:var(--ct-heading);font-family:Outfit,sans-serif;'>{APP_NAME}</div>
+              {brand_html(logo_px=120, title_rem=1.05)}
             </div>
             """,
             unsafe_allow_html=True,
@@ -255,6 +270,55 @@ class Page:
         )
         if selected != self.nav_label:
             st.switch_page(PAGE_ROUTES[selected])
+
+    # ── Floating AI chat ───────────────────────────────────────────────────────
+    @staticmethod
+    def ask_chatbot(question: str) -> str:
+        """Send a question with the running history and record both turns."""
+        st.session_state.setdefault("chat_history", [])          # for display
+        st.session_state.setdefault("chat_gemini_history", [])   # in Gemini's format
+        reply = chat_response(st.session_state.chat_gemini_history, question)
+        st.session_state.chat_history += [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": reply},
+        ]
+        st.session_state.chat_gemini_history += [
+            {"role": "user", "parts": [question]},
+            {"role": "model", "parts": [reply]},
+        ]
+        return reply
+
+    @staticmethod
+    @st.fragment
+    def chat_widget() -> None:
+        """
+        Chat button fixed bottom-right (see GLOBAL_CSS). It shares session
+        state with the What-If chatbot, so the conversation follows the user
+        across pages. A fragment, so sending a message doesn't rerun the page.
+        """
+        history = st.session_state.setdefault("chat_history", [])
+        with st.container(key="ct_chat_fab"), st.popover("💬", help="Chat with CarbonTrack AI"):
+            with st.container(key="ct_chat_panel"):
+                st.markdown("**🤖 CarbonTrack AI**")
+                box = st.container(height=380, border=False)
+                question = (st.chat_input("Write your message…", key="fab_chat_input")
+                            or st.session_state.pop("fab_pending", None))
+                with box:
+                    with st.chat_message("assistant"):
+                        st.markdown("Hi there 👋 How can I help with your emissions today?")
+                    for message in history:
+                        with st.chat_message(message["role"]):
+                            st.markdown(message["content"])
+                    if question:
+                        with st.chat_message("user"):
+                            st.markdown(question)
+                        with st.chat_message("assistant"), st.spinner("Thinking…"):
+                            st.markdown(Page.ask_chatbot(question))
+                    elif not history:
+                        for i, suggestion in enumerate(CHAT_SUGGESTIONS):
+                            st.button(suggestion, key=f"fab_sug_{i}", on_click=st.session_state.__setitem__,
+                                      args=("fab_pending", suggestion))
+                st.caption("AI-generated responses may be inaccurate. Verify important figures.")
 
     # ── Filters ────────────────────────────────────────────────────────────────
     @staticmethod
@@ -309,7 +373,7 @@ class Page:
         st.markdown(
             f"""
             <div style='margin-bottom:1.2rem;'>
-              <h1 style='color:var(--ct-heading);font-size:2rem;font-weight:800;margin:0;font-family:Outfit,sans-serif;'>{title}</h1>
+              <h1 style='color:var(--ct-heading);font-size:2rem;font-weight:800;margin:0;font-family:Poppins,sans-serif;'>{title}</h1>
               <p style='color:var(--ct-muted);font-size:0.9rem;margin:0.2rem 0 0;'>{subtitle}</p>
             </div>
             """,

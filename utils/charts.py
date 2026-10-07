@@ -21,16 +21,19 @@ SCOPE_COLORS = {1: AMBER, 2: BLUE}
 SCOPE_LABEL_COLORS = {"Scope 1": AMBER, "Scope 2": BLUE}
 
 GRID_AXIS = {"showgrid": True, "zeroline": False}
+HOVER_FORMAT = ",.4~f"
 
 BASE_LAYOUT: dict[str, Any] = {
-    "font": {"family": "Inter, sans-serif"},
+    "font": {"family": "Poppins, sans-serif"},
     "margin": {"t": 45, "b": 25, "l": 10, "r": 10},
     "xaxis": GRID_AXIS,
-    "yaxis": GRID_AXIS,
+    # Hover values: at most 4 decimal places, trailing zeros dropped.
+    "yaxis": {**GRID_AXIS, "hoverformat": HOVER_FORMAT},
 }
 
 
 def apply_layout(fig: go.Figure, height: int, **overrides: Any) -> go.Figure:
     """Apply the shared theme, letting callers override individual keys."""
     fig.update_layout({**BASE_LAYOUT, "height": height, **overrides})
+    fig.update_yaxes(hoverformat=HOVER_FORMAT)  # also secondary y-axes and caller overrides
     return fig

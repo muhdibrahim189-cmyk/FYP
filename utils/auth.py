@@ -7,7 +7,7 @@ import logging
 
 import streamlit as st
 
-from utils.config import APP_LOGO_DATA_URI, APP_NAME
+from utils.config import APP_LOGO_DATA_URI, APP_NAME, APP_SHORT_NAME
 from utils.data_manager import log_action
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,16 @@ def render_sidebar_user() -> None:
         st.rerun()
 
 
+def brand_html(logo_px: int, title_rem: float) -> str:
+    """Logo emblem with the system name beneath it (sidebar and login page)."""
+    return f"""
+      <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='width:{logo_px}px;max-width:70%;'>
+      <div style='font-family:Poppins,sans-serif;font-weight:800;line-height:1.2;margin-top:0.5rem;
+          font-size:{title_rem}rem;color:var(--ct-heading);text-transform:uppercase;letter-spacing:0.02em;'>
+        {APP_NAME} <span style='color:var(--ct-ok-text);'>({APP_SHORT_NAME})</span>
+      </div>""".strip()  # a blank line would end the HTML block in Markdown
+
+
 # ── Internal – Login UI ────────────────────────────────────────────────────────
 def _render_login_page() -> None:
     _, center, _ = st.columns([1, 1.4, 1])
@@ -150,9 +160,8 @@ def _render_login_page() -> None:
         st.markdown(
             f"""
             <div style='text-align:center;margin-bottom:2rem;'>
-              <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='height:5rem;'>
-              <h1 style='color:var(--ct-heading);margin:0;font-size:2rem;font-weight:700;'>{APP_NAME}</h1>
-              <p style='color:var(--ct-muted);margin:0.2rem 0 0;font-size:0.92rem;'>Digital Carbon Accounting Platform</p>
+              {brand_html(logo_px=150, title_rem=1.6)}
+              <p style='color:var(--ct-muted);margin:0.6rem 0 0;font-size:0.92rem;'>Digital Carbon Accounting Platform</p>
             </div>
             """,
             unsafe_allow_html=True,

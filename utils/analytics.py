@@ -207,6 +207,37 @@ def stirpat_forecast(panel: pd.DataFrame, companies: Iterable[str], target: str 
     )
 
 
+def emissions_snapshot(df: pd.DataFrame, panel: pd.DataFrame) -> str:
+    """
+    A compact plain-text summary of the dashboard figures (Mt CO₂e) for the
+    AI chatbot, so its answers rest on this system's data.
+    """
+    if df.empty:
+        return "No emission data is loaded."
+    years = df.assign(year=df["date"].dt.year)
+    by_year = years.pivot_table(index="year", columns="scope", values="co2e_kg", aggfunc="sum") / KG_PER_MT
+    lines = ["Emissions by year (Mt CO₂e): " + "; ".join(
+        f"{year}: S1 {row.get(1, 0):.2f}, S2 {row.get(2, 0):.2f}" for year, row in by_year.iterrows())]
+    latest = int(years["year"].max())
+    company = (years[years["year"] == latest].pivot_table(index="facility", columns="scope",
+                                                          values="co2e_kg", aggfunc="sum") / KG_PER_MT)
+    lines.append(f"By company in {latest} (Mt CO₂e): " + "; ".join(
+        f"{name}: S1 {row.get(1, 0):.2f}, S2 {row.get(2, 0):.2f}" for name, row in company.iterrows()))
+    if not panel.empty:
+        companies = panel["company"].unique()
+        for target, label in (("S1", "Scope 1"), ("S2", "Scope 2"), ("I", "Total")):
+            result = stirpat_forecast(panel, companies, target=target)
+            if result is not None:
+                months = result.forecast["Month"]
+                lines.append(
+                    f"STIRPAT {label} forecast {months.iloc[0]} to {months.iloc[-1]}: "
+                    f"{result.forecast['Predicted'].sum():.2f} Mt; test R² {result.test_r2:.3f}, "
+                    f"MAPE {result.test_mape_pct:.1f}%"
+                )
+    lines.append("Note: 2026 figures are synthetic projections, not reported data.")
+    return "\n".join(lines)
+
+
 # ── Anomaly detection ──────────────────────────────────────────────────────────
 def detect_anomaly(history_kg: Sequence[float], co2e_kg: float, source: str) -> tuple[bool, str]:
     """

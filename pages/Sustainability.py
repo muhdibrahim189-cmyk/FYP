@@ -109,7 +109,7 @@ class Sustainability(Page):
             """)
 
     def render_recent_submissions(self) -> None:
-        self.section_title("📋 Your Recent Submissions")
+        self.section_title("📋 Your Recent Submissions (Table)")
         ledger = load_database_emissions()
         mine = ledger[ledger["submitted_by"] == self.username] if not ledger.empty else ledger
         if mine.empty:
@@ -250,7 +250,7 @@ class Sustainability(Page):
 
         self.observation("Approved entries immediately impact the official corporate ESG reporting totals and tax estimations.", title="Observations & Protocol")
 
-        self.section_title("📋 Submission History (All Records)")
+        self.section_title("📋 Submission History – All Records (Table)")
         history = load_all_pending()
         if not history.empty:
             table = history[["id", "date", "facility", "scope", "source", "quantity", "co2e_kg",

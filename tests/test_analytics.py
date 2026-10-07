@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from utils.analytics import (
-    detect_anomaly, filter_emissions, monthly_summary, period_over_period_change, scope_totals,
+    detect_anomaly, emissions_snapshot, filter_emissions, monthly_summary, period_over_period_change, scope_totals,
     search_rows, stirpat_forecast, to_safe_csv,
 )
 
@@ -85,7 +85,20 @@ def make_stirpat_panel(months: int = 36) -> pd.DataFrame:
         T = 100 * (0.995 ** t) * (1 + 0.04 * np.sin(2 * t))
         rows.append(pd.DataFrame({"company": company, "date": dates, "P": P, "A": A, "T": T,
                                   "I": alpha * P ** 0.8 * A ** 0.1 * T ** 0.9}))
-    return pd.concat(rows, ignore_index=True)
+    panel = pd.concat(rows, ignore_index=True)
+    return panel.assign(S1=panel["I"] * 0.9, S2=panel["I"] * 0.1)
+
+
+class SnapshotTests(unittest.TestCase):
+    def test_summarises_years_companies_and_forecasts_in_mt(self):
+        df = make_records().assign(co2e_kg=lambda f: f["co2e_kg"] * 1e9)  # 1,000–4,000 Mt
+        text = emissions_snapshot(df, make_stirpat_panel())
+        self.assertIn("2024: S1 4000.00, S2 2000.00", text)
+        self.assertIn("By company in 2025 (Mt CO₂e): Plant: S1 0.00, S2 4000.00", text)
+        self.assertIn("STIRPAT Total forecast", text)
+
+    def test_empty_data(self):
+        self.assertEqual(emissions_snapshot(pd.DataFrame(), pd.DataFrame()), "No emission data is loaded.")
 
 
 class StirpatTests(unittest.TestCase):
@@ -108,7 +121,7 @@ class StirpatTests(unittest.TestCase):
         self.assertLess(only_a.forecast["Predicted"].sum(), both.forecast["Predicted"].sum())
 
     def test_models_the_chosen_target_column(self):
-        panel = make_stirpat_panel().assign(S1=lambda f: f["I"] * 0.9)
+        panel = make_stirpat_panel()  # S1 is 90% of I
         total = stirpat_forecast(panel, ["A Co", "B Co"], target="I")
         scope1 = stirpat_forecast(panel, ["A Co", "B Co"], target="S1")
         self.assertAlmostEqual(scope1.forecast["Predicted"].sum() / total.forecast["Predicted"].sum(), 0.9, places=3)

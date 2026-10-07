@@ -137,18 +137,20 @@ def render_sidebar_user() -> None:
         f"{ROLE_LABELS.get(st.session_state.role, '')}</span>",
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("🚪 Logout", width="stretch"):
+    if st.sidebar.button("Logout", width="stretch"):
         logout()
         st.rerun()
 
 
 def brand_html(logo_px: int, title_rem: float) -> str:
     """Logo emblem with the system name beneath it (sidebar and login page)."""
+    # Two lines: "SISTEM PEMANTAUAN" / "KARBON (SPK)".
+    first_line, last_word = APP_NAME.rsplit(" ", 1)
     return f"""
       <img src='{APP_LOGO_DATA_URI}' alt='{APP_NAME} logo' style='width:{logo_px}px;max-width:70%;'>
       <div style='font-family:Poppins,sans-serif;font-weight:800;line-height:1.2;margin-top:0.5rem;
           font-size:{title_rem}rem;color:var(--ct-heading);text-transform:uppercase;letter-spacing:0.02em;'>
-        {APP_NAME} <span style='color:var(--ct-ok-text);'>({APP_SHORT_NAME})</span>
+        {first_line}<br>{last_word} <span style='color:var(--ct-ok-text);'>({APP_SHORT_NAME})</span>
       </div>""".strip()  # a blank line would end the HTML block in Markdown
 
 

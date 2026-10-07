@@ -83,7 +83,7 @@ class WhatIfSimulator(Page):
 
     def render_results(self, df_sim) -> None:
         baseline, simulated, reduction_kg = self.baseline, self.simulated, self.reduction_kg
-        self.section_title("📊 Simulation Results")
+        self.section_title("📊 Simulation Results (KPI Cards & Bar Chart)")
         arrow = "▼" if reduction_kg > 0 else ("▲" if reduction_kg < 0 else "—")
         arrow_color = GREEN if reduction_kg > 0 else RED
         results = (
@@ -116,7 +116,7 @@ class WhatIfSimulator(Page):
             st.plotly_chart(fig_src, width="stretch")
 
     def render_comparison(self, df_sim) -> None:
-        self.section_title("📈 Baseline vs Simulation Comparison")
+        self.section_title("📈 Baseline vs Simulation Comparison (Area Chart)")
         st.write(
             "Visualizes the timeline variance between baseline historical emissions and the simulated reduction scenario over all recorded monthly periods."
         )

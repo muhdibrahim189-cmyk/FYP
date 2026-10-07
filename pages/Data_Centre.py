@@ -158,7 +158,7 @@ class DataCentre(Page):
               </div>
             </div>""", unsafe_allow_html=True)
 
-        self.section_title("Preview (first 10 rows)")
+        self.section_title("Preview – first 10 rows (Table)")
         st.dataframe(export_df.head(10), width="stretch")
 
 

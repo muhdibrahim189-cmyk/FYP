@@ -14,20 +14,27 @@ CARBON_EMISSION_DATA_PATH = PROJECT_ROOT / "Carbon_Emission_Data.xlsx"
 APP_NAME = "Sistem Pemantauan Karbon"
 APP_SHORT_NAME = "SPK"  # browser-tab titles
 APP_LOGO_PATH = PROJECT_ROOT / "assets" / "Logo.png"
+CHATBOT_LOGO_PATH = PROJECT_ROOT / "assets" / "logo AI Chatbot.png"
+CHATBOT_NAME = "SPK AI"
 
 
-def _load_logo() -> Image.Image:
-    """The logo with its transparent margin trimmed, so CSS sizes the emblem itself."""
-    logo = Image.open(APP_LOGO_PATH).convert("RGBA")
+def _load_logo(path: Path) -> Image.Image:
+    """A logo with its transparent margin trimmed, so CSS sizes the artwork itself."""
+    logo = Image.open(path).convert("RGBA")
     return logo.crop(logo.getchannel("A").getbbox())
 
 
-_LOGO = _load_logo()
-APP_PAGE_ICON = _LOGO  # browser-tab icon
-# Inline copy for the HTML brand blocks (sidebar, login), which can't reference a local file.
-_logo_png = BytesIO()
-_LOGO.save(_logo_png, format="PNG")
-APP_LOGO_DATA_URI = "data:image/png;base64," + base64.b64encode(_logo_png.getvalue()).decode()
+def _data_uri(image: Image.Image) -> str:
+    """Inline copy for HTML/CSS, which can't reference a local file."""
+    png = BytesIO()
+    image.save(png, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(png.getvalue()).decode()
+
+
+APP_PAGE_ICON = _load_logo(APP_LOGO_PATH)  # browser-tab icon
+APP_LOGO_DATA_URI = _data_uri(APP_PAGE_ICON)
+CHATBOT_AVATAR = _load_logo(CHATBOT_LOGO_PATH)  # assistant avatar in the chat panel
+CHATBOT_LOGO_DATA_URI = _data_uri(CHATBOT_AVATAR)
 
 # ── Navigation ────────────────────────────────────────────────────────────────
 PAGE_ROUTES = {
@@ -46,9 +53,9 @@ GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
 GEMINI_MODEL_LABEL = "Gemini 2.5 Flash"
 CHAT_SUGGESTIONS = (
-    "What is the most impactful lever to reduce Scope 2 emissions?",
-    "How can we achieve a 30% carbon reduction in 2 years?",
-    "What is the payback period for solar PV installation in Malaysia?",
+    "Which company emits the most, and why?",
+    "Is the STIRPAT forecast reliable?",
+    "How can companies reduce Scope 2 emissions?",
     "Explain the difference between carbon credits and carbon tax.",
 )
 

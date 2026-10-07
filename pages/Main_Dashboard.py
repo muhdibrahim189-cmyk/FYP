@@ -74,11 +74,11 @@ class MainDashboard(Page):
 
         # One scrolling page: every chart section follows the previous one.
         self.monthly = monthly_summary(df)
-        self.section_title("📉 Monthly Trend & STIRPAT Forecast")
+        self.section_title("📉 Monthly Trend & STIRPAT Forecast (Line Chart)")
         self.render_trend_section()
-        self.section_title("🏭 Facility Heatmap & Trellis")
+        self.section_title("🏭 Facility Heatmap & Trellis (Bar Chart & Heatmap)")
         self.render_facility_section()
-        self.section_title("💰 Carbon Tax Analysis")
+        self.section_title("💰 Carbon Tax Analysis (Bar & Line Chart)")
         self.render_tax_section()
 
         self.footer()
@@ -174,7 +174,7 @@ class MainDashboard(Page):
     @staticmethod
     def render_stirpat_accuracy(results: dict) -> None:
         """Test-set accuracy of each STIRPAT model (months it never saw in training)."""
-        st.markdown("**STIRPAT model accuracy (test set)**")
+        st.markdown("**STIRPAT model accuracy (test set) (Table)**")
         table = pd.DataFrame([
             {
                 "Model": label,
@@ -226,7 +226,7 @@ class MainDashboard(Page):
         apply_layout(fig_heat, 320)
         fig_heat.update_traces(hovertemplate=f"%{{y}} · %{{x}}<br>%{{z:{HOVER_FORMAT}}} Mt CO₂e<extra></extra>")
         st.plotly_chart(fig_heat, width="stretch")
-        self.observation("Darker blue cells indicate higher monthly facility output. Monitor sites with sudden spikes across consecutive months.")
+        self.observation("Darker blue cells indicate higher output. Monitor sites with sudden spikes across consecutive months.")
 
     def render_tax_section(self) -> None:
         st.write(

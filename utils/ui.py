@@ -12,11 +12,13 @@ import streamlit as st
 
 from data.emission_factors import PENINSULAR_GRID_FACTOR
 from utils.ai_helper import chat_response
+from utils.analytics import emissions_snapshot
 from utils.auth import brand_html, render_sidebar_user, require_login
 from utils.config import (
-    APP_PAGE_ICON, APP_SHORT_NAME, CHAT_SUGGESTIONS, NAVIGATION_OPTIONS, PAGE_ROUTES,
+    APP_PAGE_ICON, APP_SHORT_NAME, CHAT_SUGGESTIONS, CHATBOT_AVATAR, CHATBOT_LOGO_DATA_URI, CHATBOT_NAME,
+    NAVIGATION_OPTIONS, PAGE_ROUTES,
 )
-from utils.data_manager import init_db, load_emissions
+from utils.data_manager import init_db, load_emissions, load_stirpat_panel
 
 FONT_IMPORT = (
     "@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800"
@@ -187,13 +189,19 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 /* Floating AI chat (Page.chat_widget): round button pinned bottom-right on every page */
 .st-key-ct_chat_fab { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 999990; width: auto !important; }
 .st-key-ct_chat_fab button {
-    width: 3.6rem; height: 3.6rem; border-radius: 50% !important; border: none !important;
-    background: #2563EB !important; box-shadow: 0 6px 18px rgba(37,99,235,0.4) !important;
+    width: 3.8rem; height: 3.8rem; border-radius: 50% !important; border: 2px solid #2563EB !important;
+    background-color: #ffffff !important; box-shadow: 0 6px 18px rgba(37,99,235,0.35) !important;
 }
-.st-key-ct_chat_fab button:hover { background: #1d4ed8 !important; transform: scale(1.06); }
-.st-key-ct_chat_fab button p { font-size: 1.6rem; color: white !important; }
+.st-key-ct_chat_fab button:hover { transform: scale(1.06); }
+/* The label stays for screen readers; the robot logo (init_app) is the visible face. */
+.st-key-ct_chat_fab button p { font-size: 0 !important; }
 .st-key-ct_chat_fab button [data-testid='stIconMaterial'] { display: none; }
-[data-testid='stPopoverBody']:has(.st-key-ct_chat_panel) { width: min(380px, calc(100vw - 2rem)); max-width: none; }
+/* One scrollbar: the panel itself never scrolls, only the message list does,
+   so the text box stays fixed at the bottom. */
+[data-testid='stPopoverBody']:has(.st-key-ct_chat_panel) {
+    width: min(380px, calc(100vw - 2rem)); max-width: none; max-height: none !important; overflow: hidden !important;
+}
+.st-key-ct_chat_box { height: min(380px, calc(100vh - 300px)) !important; overflow-y: auto !important; }
 .st-key-ct_chat_panel .stButton > button { border-radius: 18px !important; font-size: 0.8rem; text-align: left; }
 
 hr { border-color: var(--ct-border) !important; }
@@ -211,7 +219,11 @@ def init_app(page_title: str, page_icon: str) -> None:
     """
     st.set_page_config(page_title=page_title, page_icon=page_icon, layout="wide",
                        initial_sidebar_state="expanded")
-    st.markdown(f"<style>{FONT_IMPORT}{GLOBAL_CSS}</style>", unsafe_allow_html=True)
+    chat_logo_css = (
+        ".st-key-ct_chat_fab button { background: #ffffff "
+        f"url('{CHATBOT_LOGO_DATA_URI}') center / 74% no-repeat !important; }}"
+    )
+    st.markdown(f"<style>{FONT_IMPORT}{GLOBAL_CSS}{chat_logo_css}</style>", unsafe_allow_html=True)
     init_db()
     require_login()
 
@@ -277,7 +289,8 @@ class Page:
         """Send a question with the running history and record both turns."""
         st.session_state.setdefault("chat_history", [])          # for display
         st.session_state.setdefault("chat_gemini_history", [])   # in Gemini's format
-        reply = chat_response(st.session_state.chat_gemini_history, question)
+        data_context = emissions_snapshot(load_emissions(), load_stirpat_panel())
+        reply = chat_response(st.session_state.chat_gemini_history, question, data_context)
         st.session_state.chat_history += [
             {"role": "user", "content": question},
             {"role": "assistant", "content": reply},
@@ -297,22 +310,23 @@ class Page:
         across pages. A fragment, so sending a message doesn't rerun the page.
         """
         history = st.session_state.setdefault("chat_history", [])
-        with st.container(key="ct_chat_fab"), st.popover("💬", help="Chat with CarbonTrack AI"):
+        with st.container(key="ct_chat_fab"), st.popover("Chat", help=f"Chat with {CHATBOT_NAME}"):
             with st.container(key="ct_chat_panel"):
-                st.markdown("**🤖 CarbonTrack AI**")
-                box = st.container(height=380, border=False)
+                st.markdown(f"**{CHATBOT_NAME}**")
+                box = st.container(height=380, border=False, key="ct_chat_box")
                 question = (st.chat_input("Write your message…", key="fab_chat_input")
                             or st.session_state.pop("fab_pending", None))
                 with box:
-                    with st.chat_message("assistant"):
+                    with st.chat_message("assistant", avatar=CHATBOT_AVATAR):
                         st.markdown("Hi there 👋 How can I help with your emissions today?")
                     for message in history:
-                        with st.chat_message(message["role"]):
+                        avatar = CHATBOT_AVATAR if message["role"] == "assistant" else None
+                        with st.chat_message(message["role"], avatar=avatar):
                             st.markdown(message["content"])
                     if question:
                         with st.chat_message("user"):
                             st.markdown(question)
-                        with st.chat_message("assistant"), st.spinner("Thinking…"):
+                        with st.chat_message("assistant", avatar=CHATBOT_AVATAR), st.spinner("Thinking…"):
                             st.markdown(Page.ask_chatbot(question))
                     elif not history:
                         for i, suggestion in enumerate(CHAT_SUGGESTIONS):

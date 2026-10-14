@@ -13,8 +13,10 @@ from html import escape
 import pandas as pd
 import streamlit as st
 
-from data.emission_factors import ALL_FACTORS, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES, UNIT_NAMES
-from utils.analytics import search_rows, to_safe_csv
+from data.emission_factors import (
+    ALL_FACTORS, COMPANIES, ENERGY_SCOPE, ENERGY_SOURCES, SCOPE1_SOURCES, SCOPE2_SOURCES, UNIT_NAMES,
+)
+from utils.analytics import monthly_ledger_summary, search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
@@ -36,6 +38,12 @@ ACTION_STYLES = {                       # action -> (colour, icon)
     "LOGOUT":             ("var(--ct-muted)", "🚪"),
 }
 DEFAULT_ACTION_STYLE = ("var(--ct-muted)", "•")
+# Entry types: scope -> (label, sources). Power consumption is activity data with no CO₂e.
+ENTRY_TYPES = {
+    1: ("Scope 1 (Direct)", SCOPE1_SOURCES),
+    2: ("Scope 2 (Indirect)", SCOPE2_SOURCES),
+    ENERGY_SCOPE: ("Power Consumption", ENERGY_SOURCES),
+}
 
 
 class Sustainability(Page):
@@ -98,6 +106,9 @@ class Sustainability(Page):
 
             The record will be reviewed and approved/rejected by a manager before being recorded.
             """)
+        elif data["scope"] == ENERGY_SCOPE:
+            st.success(f"✅ **Power consumption recorded:** {data['quantity']:,.2f} {unit_label} "
+                       f"for {data['facility']}.")
         else:
             st.success(f"""
             ✅ **Emission Record Submitted Successfully**
@@ -121,6 +132,20 @@ class Sustainability(Page):
         table["status"] = table["status"].map(SUBMISSION_STATUS_ICONS).fillna("?")
         st.dataframe(table, width="stretch", hide_index=True)
 
+    def render_monthly_summary(self) -> None:
+        self.section_title("📅 Monthly Summary (Table)")
+        self.muted_text("Each company's entries for a month combined into one Scope 1 and one Scope 2 figure.")
+        summary = monthly_ledger_summary(load_database_emissions())
+        if summary.empty:
+            self.muted_text("No approved entries yet.")
+            return
+        company = st.selectbox("Company", [ALL_OPTION, *COMPANIES], key="summary_company")
+        if company != ALL_OPTION:
+            summary = summary[summary["Company"] == company]
+        st.dataframe(summary, width="stretch", hide_index=True,
+                     column_config={col: st.column_config.NumberColumn(format="%.2f")
+                                    for col in summary.columns if col not in ("Month", "Company")})
+
     def render_entry_tab(self) -> None:
         self.section_title("📝 Submit New Emission Record")
         st.write(
@@ -138,18 +163,23 @@ class Sustainability(Page):
         # the scope/source/quantity choices as they change.
         col1, col2 = st.columns(2)
         with col1:
-            entry_date = st.date_input("Emission Date", value=date.today(), max_value=date.today(), key="entry_date")
+            entry_date = st.date_input("Activity Date", value=date.today(), max_value=date.today(), key="entry_date",
+                                       help="One entry per source per company per month; a second one for the "
+                                            "same month is flagged as a duplicate.")
             facility = st.selectbox("Company", COMPANIES, key="entry_facility")
-            scope_choice = st.radio("Scope", [1, 2], horizontal=True, key="entry_scope",
-                                    format_func=lambda x: f"Scope {x} ({'Direct' if x == 1 else 'Indirect'})")
+            scope_choice = st.radio("Entry Type", list(ENTRY_TYPES), horizontal=True, key="entry_scope",
+                                    format_func=lambda x: ENTRY_TYPES[x][0])
         with col2:
-            sources = SCOPE1_SOURCES if scope_choice == 1 else SCOPE2_SOURCES
-            source = st.selectbox("Emission Source", sources, key=f"entry_source_{scope_choice}")
+            source = st.selectbox("Source", ENTRY_TYPES[scope_choice][1], key=f"entry_source_{scope_choice}")
             unit_label = ALL_FACTORS[source]["unit"]
             quantity = st.number_input(f"Quantity ({unit_label})", min_value=0.0, value=100.0,
                                        step=10.0, format="%.2f", key="entry_quantity",
                                        help=f"Unit: {UNIT_NAMES[unit_label]}")
-            self.render_co2e_preview(quantity * ALL_FACTORS[source]["factor"])
+            if scope_choice == ENERGY_SCOPE:
+                st.info("Activity data: no CO₂e of its own. It is the energy behind the STIRPAT "
+                        "energy-intensity driver (T = energy ÷ production).")
+            else:
+                self.render_co2e_preview(quantity * ALL_FACTORS[source]["factor"])
 
         notes = st.text_area("Notes (optional)", placeholder="Add any relevant context…", height=80, key="entry_notes")
 
@@ -171,6 +201,7 @@ class Sustainability(Page):
                 }, unit_label)
 
         self.render_recent_submissions()
+        self.render_monthly_summary()
         self.observation("Ensure utility invoices and fuel metering tickets are retained for 7 years to comply with statutory GHG Protocol audit guidelines.", title="Observations & Compliance Guidance")
 
     # ── TAB 2 – Approval Queue ──────────────────────────────────────────────────
@@ -190,7 +221,7 @@ class Sustainability(Page):
             {escape(str(row['source']))} — {escape(str(row['facility']))}
           </div>
           <div style='color:var(--ct-text-soft);font-size:0.84rem;margin-top:0.25rem;'>
-            Scope {int(row['scope'])} · <strong>{row['quantity']:,.2f} {escape(str(row['unit']))}</strong> ·
+            {escape(ENTRY_TYPES.get(int(row['scope']), (f"Scope {int(row['scope'])}",))[0])} · <strong>{row['quantity']:,.2f} {escape(str(row['unit']))}</strong> ·
             <span style='color:var(--ct-heading);font-weight:700;'>{row['co2e_kg']:,.2f} kg CO₂e</span> ·
             Tax Exposure: <strong>MYR {carbon_tax(row['co2e_kg']):,.2f}</strong>
           </div>

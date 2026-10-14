@@ -15,7 +15,6 @@ from data.emission_factors import ALL_FACTORS, COMPANIES
 SEED = 42
 SEED_START = datetime(2025, 1, 1)
 SEED_MONTHS = 18
-DAYS_PER_SEED_MONTH = 30
 SEED_USERS = ["admin", "user", "manager"]
 SEED_APPROVER = "manager"
 
@@ -55,7 +54,9 @@ def generate_seed_records() -> list[tuple]:
     rng = np.random.default_rng(SEED)
     records = []
     for month_offset in range(SEED_MONTHS):
-        month_date = SEED_START + timedelta(days=DAYS_PER_SEED_MONTH * month_offset)
+        # Calendar months, so each source has exactly one record per company-month.
+        year, month = divmod(SEED_START.month - 1 + month_offset, 12)
+        month_date = SEED_START.replace(year=SEED_START.year + year, month=month + 1)
         for facility in COMPANIES:
             for profile in SEED_PROFILES:
                 for source, base_qty in profile.base_quantities.items():

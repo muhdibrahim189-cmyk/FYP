@@ -47,8 +47,18 @@ SCOPE2_FACTORS = {
     "Electricity – Kulim Hi-Tech Park (NUR)":   {"unit": "kWh", "factor": 0.540, "description": "Purchased grid electricity – N.U.R Power Sdn Bhd"},
 }
 
+# --------------- Power consumption (activity data) ----------
+# Monthly total energy use per company: the input behind STIRPAT's
+# T = energy ÷ production. It has no CO₂e of its own (the fuel and
+# electricity entries carry the emissions), so it is stored with
+# scope 0 and every Scope 1 / Scope 2 total skips it.
+ENERGY_SCOPE = 0
+ENERGY_FACTORS = {
+    "Power Consumption – Total Energy": {"unit": "kWh", "factor": 0.0, "description": "Total energy consumed (all fuels and electricity)"},
+}
+
 # All factors combined for easy lookup
-ALL_FACTORS = {**SCOPE1_FACTORS, **SCOPE2_FACTORS}
+ALL_FACTORS = {**SCOPE1_FACTORS, **SCOPE2_FACTORS, **ENERGY_FACTORS}
 
 # Full names for the unit abbreviations above (quantity input tooltip)
 UNIT_NAMES = {
@@ -64,9 +74,10 @@ PENINSULAR_GRID_FACTOR = SCOPE2_FACTORS["Electricity – Peninsular Malaysia (TN
 # Scope mapping for convenience
 SCOPE1_SOURCES = list(SCOPE1_FACTORS.keys())
 SCOPE2_SOURCES = list(SCOPE2_FACTORS.keys())
+ENERGY_SOURCES = list(ENERGY_FACTORS.keys())
 
 # --------------- Carbon Tax / Price -------------------------
-CARBON_TAX_RATE_MYR = 35.0          # MYR per tonne CO₂e  (Malaysia 2026)
+CARBON_TAX_RATE_MYR = 16.0          # MYR per tonne CO₂e  (Malaysia 2026)
 
 # --------------- Companies ---------------------------------
 # The companies in Carbon_Emission_Data.xlsx (a test keeps the two in step).

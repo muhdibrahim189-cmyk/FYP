@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 
 from utils.analytics import (
-    detect_anomaly, emissions_snapshot, filter_emissions, monthly_summary, period_over_period_change, scope_totals,
+    detect_anomaly, emissions_snapshot, filter_emissions, monthly_ledger_summary, monthly_summary,
+    period_over_period_change, scope_totals,
     search_rows, stirpat_forecast, to_safe_csv,
 )
 
@@ -86,7 +87,7 @@ def make_stirpat_panel(months: int = 36) -> pd.DataFrame:
         rows.append(pd.DataFrame({"company": company, "date": dates, "P": P, "A": A, "T": T,
                                   "I": alpha * P ** 0.8 * A ** 0.1 * T ** 0.9}))
     panel = pd.concat(rows, ignore_index=True)
-    return panel.assign(S1=panel["I"] * 0.9, S2=panel["I"] * 0.1)
+    return panel.assign(S1=panel["I"] * 0.9, S2=panel["I"] * 0.1, synthetic=False)
 
 
 class SnapshotTests(unittest.TestCase):
@@ -108,6 +109,7 @@ class StirpatTests(unittest.TestCase):
             self.assertAlmostEqual(result.coefficients[driver], expected, delta=0.1)  # ridge shrinks them a little
         self.assertGreater(result.test_r2, 0.99)
         self.assertLess(result.test_mape_pct, 1.0)
+        self.assertLess(result.test_wape_pct, 1.0)
         # 36 months, 80/20 split: train Jan 2021 – Apr 2023, test May 2023 – Dec 2023.
         self.assertEqual(result.train_end, "2023-04")
         self.assertEqual(result.test["Month"].tolist()[0], "2023-05")
@@ -127,8 +129,50 @@ class StirpatTests(unittest.TestCase):
         self.assertAlmostEqual(scope1.forecast["Predicted"].sum() / total.forecast["Predicted"].sum(), 0.9, places=3)
         self.assertAlmostEqual(scope1.test["Actual"].sum() / total.test["Actual"].sum(), 0.9)
 
+    def test_scope2_trend_follows_a_company_specific_decline(self):
+        # A Co cuts Scope 2 by 30% a year (e.g. buying renewables) while P, A, T keep growing.
+        panel = make_stirpat_panel(months=48)
+        years = (panel["date"] - panel["date"].min()).dt.days / 365.25
+        panel["S2"] *= np.where(panel["company"] == "A Co", np.exp(-0.3567 * years), 1.0)
+        result = stirpat_forecast(panel, ["A Co"], target="S2")
+        self.assertLess(result.test_wape_pct, 1.0)
+        self.assertLess(result.forecast["Predicted"].iloc[-1], result.test["Actual"].iloc[-1])
+
+    def test_synthetic_months_extend_the_drivers_but_are_not_fitted(self):
+        panel = make_stirpat_panel(months=48)
+        last_year = panel["date"].dt.year == 2024
+        reported = stirpat_forecast(panel[~last_year], ["A Co", "B Co"])
+        panel.loc[last_year, "synthetic"] = True
+        with_synthetic = stirpat_forecast(panel, ["A Co", "B Co"])
+        panel.loc[last_year, ["I", "S1", "S2"]] *= 5  # nonsense emissions must not leak into the fit
+        scrambled = stirpat_forecast(panel, ["A Co", "B Co"])
+        self.assertEqual(with_synthetic.test["Month"].tolist(), reported.test["Month"].tolist())
+        self.assertEqual(with_synthetic.forecast["Month"].tolist()[0], "2025-01")  # after the synthetic year
+        self.assertEqual(scrambled.coefficients, with_synthetic.coefficients)
+        self.assertEqual(scrambled.forecast["Predicted"].tolist(), with_synthetic.forecast["Predicted"].tolist())
+
     def test_needs_two_years_of_history(self):
         self.assertIsNone(stirpat_forecast(make_stirpat_panel(months=20), ["A Co"]))
+
+
+class MonthlyLedgerSummaryTests(unittest.TestCase):
+    def test_combines_sources_into_one_row_per_company_month(self):
+        ledger = pd.DataFrame({
+            "month": ["2025-01"] * 4 + ["2025-02"],
+            "facility": ["BP"] * 5,
+            "scope": [1, 1, 2, 0, 1],
+            "quantity": [10, 20, 1000, 50_000, 5],
+            "co2e_kg": [2000, 3000, 774, 0, 1000],
+        })
+        summary = monthly_ledger_summary(ledger)
+        self.assertEqual(summary["Month"].tolist(), ["2025-02", "2025-01"])  # newest first
+        jan = summary.iloc[1]
+        self.assertEqual((jan["Scope 1 (t CO₂e)"], jan["Scope 2 (t CO₂e)"], jan["Total (t CO₂e)"]), (5.0, 0.774, 5.774))
+        self.assertEqual(jan["Power Consumption (MWh)"], 50.0)
+        self.assertEqual(summary.iloc[0]["Scope 2 (t CO₂e)"], 0)  # month without electricity
+
+    def test_empty_ledger(self):
+        self.assertTrue(monthly_ledger_summary(pd.DataFrame()).empty)
 
 
 class AnomalyTests(unittest.TestCase):

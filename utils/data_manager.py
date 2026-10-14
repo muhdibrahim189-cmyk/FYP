@@ -9,7 +9,7 @@ Two data sources exist:
     submissions, the approval queue and the activity log.
 """
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
@@ -19,7 +19,7 @@ from typing import Any
 import pandas as pd
 
 from data.emission_factors import (
-    ALL_FACTORS, CARBON_TAX_RATE_MYR, COMPANIES, SCOPE1_SOURCES, SCOPE2_SOURCES,
+    ALL_FACTORS, CARBON_TAX_RATE_MYR, COMPANIES, ENERGY_SCOPE, ENERGY_SOURCES, SCOPE1_SOURCES, SCOPE2_SOURCES,
 )
 from utils.analytics import detect_anomaly
 from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, calculate_emission
@@ -43,8 +43,10 @@ WORKBOOK_DRIVER_COLUMNS = {
 }
 WORKBOOK_REQUIRED_COLUMNS = frozenset({
     "company", "date", "days_in_month", "scope1_mt_co2e", "scope2_location_mt_co2e", "data_type",
+    "total_energy_consumption_GWh",
     *WORKBOOK_DRIVER_COLUMNS.values(),
 })
+_SOURCES_BY_SCOPE = {1: SCOPE1_SOURCES, 2: SCOPE2_SOURCES, ENERGY_SCOPE: ENERGY_SOURCES}
 WORKBOOK_SCOPE_COLUMNS = (
     (1, "scope1_mt_co2e", "Scope 1"),
     (2, "scope2_location_mt_co2e", "Scope 2"),
@@ -212,6 +214,9 @@ def _read_workbook(path: str, modified_ns: int) -> tuple[pd.DataFrame, pd.DataFr
         S2=workbook["scope2_location_mt_co2e"],
         I=workbook["scope1_mt_co2e"] + workbook["scope2_location_mt_co2e"],
         **{name: workbook[column] for name, column in WORKBOOK_DRIVER_COLUMNS.items()},
+        E=workbook["total_energy_consumption_GWh"],  # power consumption, GWh
+        # The workbook's Method_Notes: synthetic rows must not be used for model fitting.
+        synthetic=workbook["data_type"].astype(str).str.startswith("Synthetic"),
     )
     panel["P"] *= workbook["days_in_month"]  # kboe/d → kboe per month
     return df.sort_values("date", ascending=False).reset_index(drop=True), panel
@@ -230,8 +235,10 @@ def _load_workbook_emissions() -> pd.DataFrame:
 def load_stirpat_panel() -> pd.DataFrame:
     """
     Company-month STIRPAT panel: ``company``, ``date``, emissions in Mt CO₂e
-    (``S1``, ``S2`` and their total ``I``) and the drivers ``P``, ``A``, ``T``.
-    Empty when the workbook is absent.
+    (``S1``, ``S2`` and their total ``I``), the drivers ``P``, ``A``, ``T``
+    and total energy (power) consumption ``E`` in GWh.
+    ``synthetic`` marks projected (not reported) months. Empty when the
+    workbook is absent.
     """
     if not CARBON_EMISSION_DATA_PATH.exists():
         return pd.DataFrame()
@@ -289,7 +296,8 @@ def load_activity_log() -> pd.DataFrame:
 def submit_emission(data: dict[str, Any], username: str) -> dict[str, Any]:
     """
     Submit a new emission record. Normal values go straight into the ledger;
-    anomalous ones are queued for manager approval.
+    anomalous ones are queued for manager approval. A company may have only one
+    entry per source per month, so a second one is flagged as a duplicate.
     Returns {'inserted': True, 'anomaly': bool, 'reason': str, 'co2e_kg': float}.
     Raises ValueError for invalid input.
     """
@@ -302,9 +310,12 @@ def submit_emission(data: dict[str, Any], username: str) -> dict[str, Any]:
         "source": source, "unit": ALL_FACTORS[source]["unit"], "quantity": qty, "co2e_kg": co2e,
         "submitted_by": username, "submitted_at": _now(), "notes": data.get("notes", ""),
     }
-    anomaly, reason = detect_anomaly(_approved_history(source), co2e, source)
+    anomaly, reason = detect_anomaly(_approved_history(source), qty, source, row["unit"])
 
     with _connect() as conn:
+        duplicate = _duplicate_reason(conn, row)
+        if duplicate:
+            anomaly, reason = True, f"{duplicate} {reason}".strip()
         if anomaly:
             _insert(conn, "pending_submissions", {**row, "anomaly_reason": reason, "status": "pending"})
             _log(conn, username, "SUBMITTED_PENDING",
@@ -328,10 +339,9 @@ def _validate_submission(data: dict[str, Any], username: str) -> None:
         raise ValueError("Emission date must use the YYYY-MM-DD format") from None
     if data["facility"] not in COMPANIES:
         raise ValueError("Unknown company")
-    if data["scope"] not in (1, 2):
-        raise ValueError("Scope must be 1 or 2")
-    source_scope = SCOPE1_SOURCES if data["scope"] == 1 else SCOPE2_SOURCES
-    if data["source"] not in source_scope:
+    if data["scope"] not in _SOURCES_BY_SCOPE:
+        raise ValueError("Scope must be 1, 2 or power consumption")
+    if data["source"] not in _SOURCES_BY_SCOPE[data["scope"]]:
         raise ValueError("Emission source does not match the selected scope")
     try:
         quantity = float(data["quantity"])
@@ -341,11 +351,31 @@ def _validate_submission(data: dict[str, Any], username: str) -> None:
 
 
 def _approved_history(source: str) -> list[float]:
+    """Approved quantities for ``source`` (native unit, so power consumption is scored too)."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT co2e_kg FROM emissions WHERE source=? AND status='approved'", (source,)
+            "SELECT quantity FROM emissions WHERE source=? AND status='approved'", (source,)
         ).fetchall()
     return [row[0] for row in rows]
+
+
+def _same_month_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
+    return row["facility"], row["source"], str(row["date"])[:7]
+
+
+def _duplicate_reason(conn: sqlite3.Connection, row: dict[str, Any]) -> str:
+    """Non-empty when the company already has an entry for this source and month."""
+    key = _same_month_key(row)
+    match = "facility=? AND source=? AND substr(date, 1, 7)=?"
+    if conn.execute(f"SELECT 1 FROM emissions WHERE {match} AND status='approved'", key).fetchone():
+        where = "is already recorded"
+    elif conn.execute(f"SELECT 1 FROM pending_submissions WHERE {match} AND status='pending'", key).fetchone():
+        where = "is already awaiting approval"
+    else:
+        return ""
+    facility, source, month = key
+    return (f"Duplicate entry: '{source}' for {facility} in {month} {where}. Only one entry per source "
+            "per month is allowed; approving this one replaces the existing entry.")
 
 
 def _fetch_pending(conn: sqlite3.Connection, record_id: int) -> sqlite3.Row | None:
@@ -360,12 +390,20 @@ def approve_submission(record_id: int, approver: str) -> bool:
         row = _fetch_pending(conn, record_id)
         if row is None:
             return False
+        # One entry per source per month: the approved one replaces any earlier entry
+        # (kept with status 'replaced' for the audit trail).
+        replaced = conn.execute(
+            "UPDATE emissions SET status='replaced' "
+            "WHERE facility=? AND source=? AND substr(date, 1, 7)=? AND status='approved'",
+            _same_month_key(row),
+        ).rowcount
         _insert(conn, "emissions", {
             **{field: row[field] for field in _SUBMISSION_FIELDS},
             "status": "approved", "approved_by": approver, "approved_at": _now(), "is_anomaly": 1,
         })
         conn.execute("UPDATE pending_submissions SET status='approved' WHERE id=?", (record_id,))
-        _log(conn, approver, "APPROVED", f"Pending ID={record_id}, source={row['source']}")
+        _log(conn, approver, "APPROVED",
+             f"Pending ID={record_id}, source={row['source']}" + (f", replaced {replaced} earlier entry" if replaced else ""))
     return True
 
 

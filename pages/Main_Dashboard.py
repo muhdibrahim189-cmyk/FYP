@@ -84,6 +84,15 @@ class MainDashboard(Page):
         self.footer()
 
     # ── KPI cards ──────────────────────────────────────────────────────────────
+    @staticmethod
+    def change_delta(change_pct: float) -> tuple[str, str]:
+        """(CSS class, text) for a card's '% vs prior period' line."""
+        if change_pct > 0:
+            return "delta-up", f"▲ {change_pct:.1f}% vs prior period"
+        if change_pct < 0:
+            return "delta-down", f"▼ {abs(change_pct):.1f}% vs prior period"
+        return "delta-neu", "— 0.0% vs prior period"
+
     def render_kpis(self) -> None:
         totals = scope_totals(self.df)
         self.total_t = kg_to_mt(totals.total_kg)
@@ -92,20 +101,24 @@ class MainDashboard(Page):
         self.s1_share = share_pct(self.s1_t, self.total_t)
         self.s2_share = share_pct(self.s2_t, self.total_t)
 
-        change_pct = period_over_period_change(self.df)
-        if change_pct > 0:
-            delta_class, delta_icon = "delta-up", "▲"
-        elif change_pct < 0:
-            delta_class, delta_icon = "delta-down", "▼"
+        delta_class, delta_text = self.change_delta(period_over_period_change(self.df))
+
+        # Power consumption: total energy behind STIRPAT's T, for the selected years and companies.
+        panel = load_stirpat_panel()
+        if panel.empty:
+            energy_card = ("Power Consumption", "—", "GWh", "Workbook not loaded", "delta-neu", GREEN)
         else:
-            delta_class, delta_icon = "delta-neu", "—"
+            energy = panel[panel["date"].dt.year.isin(self.sel_years) & panel["company"].isin(self.sel_fac)]
+            energy = energy.assign(month=energy["date"].dt.strftime("%Y-%m"))
+            energy_class, energy_text = self.change_delta(period_over_period_change(energy, "E"))
+            energy_card = ("Power Consumption", f"{energy['E'].sum():,.0f}", "GWh total energy (STIRPAT T)",
+                           energy_text, energy_class, GREEN)
 
         cards = (
-            ("Total CO₂e", f"{self.total_t:,.2f}", "million tonnes (Mt)",
-             f"{delta_icon} {abs(change_pct):.1f}% vs prior period", delta_class, HEADING),
+            ("Total CO₂e", f"{self.total_t:,.2f}", "million tonnes (Mt)", delta_text, delta_class, HEADING),
             ("Scope 1", f"{self.s1_t:,.2f}", "Mt CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
             ("Scope 2", f"{self.s2_t:,.2f}", "Mt CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
-            ("—", "—", "", "Coming soon", "delta-neu", HEADING),  # placeholder slot
+            energy_card,
         )
         for col, (label, value, caption, delta, d_cls, color) in zip(st.columns(len(cards), gap="small"), cards):
             with col:
@@ -145,17 +158,19 @@ class MainDashboard(Page):
                 continue
             results[label] = result
             series = actual[target]
-            # Start each forecast at the last actual month so the lines connect.
+            # Start each forecast at the last month the model saw so the lines connect
+            # (later synthetic months stay on the chart for comparison).
+            start = (pd.Period(result.forecast["Month"].iloc[0]) - 1).strftime("%Y-%m")
             fig.add_trace(go.Scatter(
-                x=[series.index[-1], *result.forecast["Month"]],
-                y=[series.iloc[-1], *result.forecast["Predicted"]],
+                x=[start, *result.forecast["Month"]],
+                y=[series.get(start, result.forecast["Predicted"].iloc[0]), *result.forecast["Predicted"]],
                 name=f"{label} forecast",
                 line=dict(color=color, width=2.5, dash="dash"),
                 mode="lines+markers", marker=dict(size=6, symbol="diamond"),
             ))
         if results:
             forecast_months = next(iter(results.values())).forecast["Month"]
-            fig.add_vrect(x0=pivot.index[-1], x1=forecast_months.iloc[-1],
+            fig.add_vrect(x0=(pd.Period(forecast_months.iloc[0]) - 1).strftime("%Y-%m"), x1=forecast_months.iloc[-1],
                           fillcolor=GREEN, opacity=0.06, line_width=0,
                           annotation_text="STIRPAT forecast", annotation_position="top left")
 
@@ -180,8 +195,9 @@ class MainDashboard(Page):
                 "Model": label,
                 "Train R²": r.train_r2,
                 "Test R²": r.test_r2,
+                "WAPE (%)": r.test_wape_pct,
+                "Accuracy (%)": 100 - r.test_wape_pct,
                 "MAPE (%)": r.test_mape_pct,
-                "Accuracy (%)": 100 - r.test_mape_pct,
                 "RMSE (Mt)": r.test_rmse,
                 "a (ln P)": r.coefficients["P"],
                 "b (ln A)": r.coefficients["A"],
@@ -195,10 +211,13 @@ class MainDashboard(Page):
         first = next(iter(results.values()))
         test_months = first.test["Month"]
         st.caption(
-            "ln I = ln α + a·ln P + b·ln A + c·ln T, fitted by ridge regression with a company-specific α. "
-            f"Trained on months up to {first.train_end} ({STIRPAT_TRAIN_SHARE:.0%}), tested on "
-            f"{test_months.iloc[0]} – {test_months.iloc[-1]}. Accuracy = 100% − MAPE; MAPE and RMSE are per "
-            "company-month. Future drivers grow at their year-on-year rate."
+            "ln I = ln α + a·ln P + b·ln A + c·ln T, fitted by ridge regression with a company-specific α; "
+            "Scope 2 adds a company-specific time trend δ·t for electricity sourcing (extended STIRPAT). "
+            f"Trained on reported months up to {first.train_end} ({STIRPAT_TRAIN_SHARE:.0%}), tested on "
+            f"{test_months.iloc[0]} – {test_months.iloc[-1]}; synthetic 2026 rows are not fitted, they only supply "
+            "the 2026 driver path the forecast continues from. "
+            "Accuracy = 100% − WAPE (Σ|error| / Σ actual), which MAPE overstates for companies with tiny "
+            "totals; WAPE, MAPE and RMSE are per company-month. Future drivers grow at their year-on-year rate."
         )
 
     def render_facility_section(self) -> None:

@@ -5,9 +5,11 @@ from unittest import mock
 
 from utils import data_manager
 from utils.seed_data import SEED_MONTHS, generate_seed_records
-from data.emission_factors import COMPANIES
+from data.emission_factors import COMPANIES, ENERGY_SCOPE, ENERGY_SOURCES
+from utils.analytics import monthly_ledger_summary, scope_totals
 
-VALID = {"date": "2025-03-01", "facility": COMPANIES[0], "scope": 1, "source": "Mobile – Diesel", "quantity": 10}
+# March 2024 is before the seeded months, so a submission for it is not a duplicate.
+VALID = {"date": "2024-03-01", "facility": COMPANIES[0], "scope": 1, "source": "Mobile – Diesel", "quantity": 10}
 
 
 class DataManagerTests(unittest.TestCase):
@@ -27,6 +29,36 @@ class DataManagerTests(unittest.TestCase):
         self.assertEqual(len(data_manager.load_database_emissions()), expected)
         data_manager.init_db()
         self.assertEqual(len(data_manager.load_database_emissions()), expected)
+
+    def test_seed_has_one_entry_per_source_per_company_month(self):
+        ledger = data_manager.load_database_emissions()
+        self.assertFalse(ledger.duplicated(["facility", "source", "month"]).any())
+
+    def test_second_entry_for_same_source_and_month_is_flagged_then_replaces(self):
+        first = data_manager.submit_emission({**VALID, "quantity": 1500}, "user")
+        self.assertFalse(first["anomaly"])
+        second = data_manager.submit_emission({**VALID, "date": "2024-03-20", "quantity": 1600}, "user")
+        self.assertTrue(second["anomaly"])
+        self.assertIn("Duplicate entry", second["reason"])
+        # Another source, or the same source in another month, is not a duplicate.
+        self.assertFalse(data_manager.submit_emission({**VALID, "source": "Mobile – Petrol", "quantity": 600}, "user")["anomaly"])
+        self.assertFalse(data_manager.submit_emission({**VALID, "date": "2024-04-01", "quantity": 1500}, "user")["anomaly"])
+
+        data_manager.approve_submission(int(data_manager.load_pending().iloc[0]["id"]), "manager")
+        march = data_manager.load_database_emissions().query("month == '2024-03' and source == 'Mobile – Diesel'")
+        self.assertEqual(march["quantity"].tolist(), [1600])  # the approved entry replaced the first one
+        self.assertEqual(data_manager.load_database_emissions("replaced")["quantity"].tolist(), [1500])
+
+    def test_power_consumption_is_recorded_without_emissions(self):
+        before = scope_totals(data_manager.load_database_emissions())
+        energy = {**VALID, "scope": ENERGY_SCOPE, "source": ENERGY_SOURCES[0], "quantity": 250_000}
+        result = data_manager.submit_emission(energy, "user")
+        self.assertEqual(result["co2e_kg"], 0)
+        ledger = data_manager.load_database_emissions()
+        self.assertEqual(scope_totals(ledger), before)
+        row = monthly_ledger_summary(ledger).query("Month == '2024-03' and Company == @COMPANIES[0]")
+        self.assertEqual(row["Power Consumption (MWh)"].tolist(), [250.0])
+        self.assertTrue(data_manager.submit_emission(energy, "user")["anomaly"])  # one per month too
 
     def test_seed_generation_is_deterministic(self):
         self.assertEqual(generate_seed_records()[:5], generate_seed_records()[:5])
@@ -63,6 +95,7 @@ class DataManagerTests(unittest.TestCase):
         cases = {
             "missing field": ({k: v for k, v in VALID.items() if k != "source"}, "user"),
             "scope mismatch": ({**VALID, "source": "Electricity – Sabah (SESB)"}, "user"),
+            "energy as scope 1": ({**VALID, "source": ENERGY_SOURCES[0]}, "user"),
             "bad scope": ({**VALID, "scope": 3}, "user"),
             "unknown company": ({**VALID, "facility": "<script>"}, "user"),
             "bad date": ({**VALID, "date": "01/03/2025"}, "user"),

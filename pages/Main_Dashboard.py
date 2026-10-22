@@ -10,7 +10,7 @@ from plotly.subplots import make_subplots
 
 from data.emission_factors import CARBON_TAX_RATE_MYR
 from utils.analytics import (
-    facility_summary, filter_emissions, grouped_mt, monthly_summary, period_over_period_change,
+    dashboard_context, facility_summary, filter_emissions, grouped_mt, monthly_summary, period_over_period_change,
     scope_totals, stirpat_forecast,
 )
 from utils.carbon_calculator import (
@@ -83,6 +83,19 @@ class MainDashboard(Page):
 
         self.footer()
 
+    def chat_context(self) -> str | None:
+        """Everything the dashboard shows for the current filters, for the AI chatbot."""
+        if not hasattr(self, "forecasts"):  # render stopped early (no data / no filters)
+            return None
+        years = sorted(int(y) for y in self.sel_years)
+        filters = {
+            "years": ", ".join(map(str, years)) + (" (2026 is synthetic)" if 2026 in years else ""),
+            "companies": ", ".join(self.sel_fac),
+            "scopes": ", ".join(f"Scope {s}" for s in self.scope_opts),
+            "carbon tax rate": f"MYR {self.tax_rate:.0f}/t",
+        }
+        return dashboard_context(self.df, filters, self.change_pct, self.forecasts, self.tax_rate)
+
     # ── KPI cards ──────────────────────────────────────────────────────────────
     @staticmethod
     def change_delta(change_pct: float) -> tuple[str, str]:
@@ -101,24 +114,14 @@ class MainDashboard(Page):
         self.s1_share = share_pct(self.s1_t, self.total_t)
         self.s2_share = share_pct(self.s2_t, self.total_t)
 
-        delta_class, delta_text = self.change_delta(period_over_period_change(self.df))
-
-        # Power consumption: total energy behind STIRPAT's T, for the selected years and companies.
-        panel = load_stirpat_panel()
-        if panel.empty:
-            energy_card = ("Power Consumption", "—", "GWh", "Workbook not loaded", "delta-neu", GREEN)
-        else:
-            energy = panel[panel["date"].dt.year.isin(self.sel_years) & panel["company"].isin(self.sel_fac)]
-            energy = energy.assign(month=energy["date"].dt.strftime("%Y-%m"))
-            energy_class, energy_text = self.change_delta(period_over_period_change(energy, "E"))
-            energy_card = ("Power Consumption", f"{energy['E'].sum():,.0f}", "GWh total energy (STIRPAT T)",
-                           energy_text, energy_class, GREEN)
+        self.change_pct = period_over_period_change(self.df)
+        delta_class, delta_text = self.change_delta(self.change_pct)
 
         cards = (
             ("Total CO₂e", f"{self.total_t:,.2f}", "million tonnes (Mt)", delta_text, delta_class, HEADING),
             ("Scope 1", f"{self.s1_t:,.2f}", "Mt CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
             ("Scope 2", f"{self.s2_t:,.2f}", "Mt CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
-            energy_card,
+            ("—", "—", "", "Coming soon", "delta-neu", HEADING),  # placeholder slot
         )
         for col, (label, value, caption, delta, d_cls, color) in zip(st.columns(len(cards), gap="small"), cards):
             with col:
@@ -149,7 +152,7 @@ class MainDashboard(Page):
 
         # One model per selected scope, plus the total when both scopes are shown.
         panel = load_stirpat_panel()
-        results = {}
+        results = self.forecasts = {}
         for target, label, color, scopes in STIRPAT_TARGETS:
             if not scopes <= set(self.scope_opts):
                 continue
@@ -214,10 +217,8 @@ class MainDashboard(Page):
             "ln I = ln α + a·ln P + b·ln A + c·ln T, fitted by ridge regression with a company-specific α; "
             "Scope 2 adds a company-specific time trend δ·t for electricity sourcing (extended STIRPAT). "
             f"Trained on reported months up to {first.train_end} ({STIRPAT_TRAIN_SHARE:.0%}), tested on "
-            f"{test_months.iloc[0]} – {test_months.iloc[-1]}; synthetic 2026 rows are not fitted, they only supply "
-            "the 2026 driver path the forecast continues from. "
-            "Accuracy = 100% − WAPE (Σ|error| / Σ actual), which MAPE overstates for companies with tiny "
-            "totals; WAPE, MAPE and RMSE are per company-month. Future drivers grow at their year-on-year rate."
+            f"{test_months.iloc[0]} – {test_months.iloc[-1]}."
+            "\n" "Accuracy = 100% − WAPE (Σ|error| / Σ actual), which MAPE overstates for companies with tiny "
         )
 
     def render_facility_section(self) -> None:

@@ -43,7 +43,6 @@ WORKBOOK_DRIVER_COLUMNS = {
 }
 WORKBOOK_REQUIRED_COLUMNS = frozenset({
     "company", "date", "days_in_month", "scope1_mt_co2e", "scope2_location_mt_co2e", "data_type",
-    "total_energy_consumption_GWh",
     *WORKBOOK_DRIVER_COLUMNS.values(),
 })
 _SOURCES_BY_SCOPE = {1: SCOPE1_SOURCES, 2: SCOPE2_SOURCES, ENERGY_SCOPE: ENERGY_SOURCES}
@@ -214,7 +213,6 @@ def _read_workbook(path: str, modified_ns: int) -> tuple[pd.DataFrame, pd.DataFr
         S2=workbook["scope2_location_mt_co2e"],
         I=workbook["scope1_mt_co2e"] + workbook["scope2_location_mt_co2e"],
         **{name: workbook[column] for name, column in WORKBOOK_DRIVER_COLUMNS.items()},
-        E=workbook["total_energy_consumption_GWh"],  # power consumption, GWh
         # The workbook's Method_Notes: synthetic rows must not be used for model fitting.
         synthetic=workbook["data_type"].astype(str).str.startswith("Synthetic"),
     )
@@ -235,8 +233,7 @@ def _load_workbook_emissions() -> pd.DataFrame:
 def load_stirpat_panel() -> pd.DataFrame:
     """
     Company-month STIRPAT panel: ``company``, ``date``, emissions in Mt CO₂e
-    (``S1``, ``S2`` and their total ``I``), the drivers ``P``, ``A``, ``T``
-    and total energy (power) consumption ``E`` in GWh.
+    (``S1``, ``S2`` and their total ``I``) and the drivers ``P``, ``A``, ``T``.
     ``synthetic`` marks projected (not reported) months. Empty when the
     workbook is absent.
     """

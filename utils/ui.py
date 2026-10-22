@@ -180,10 +180,13 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 .stDataFrame { border-radius: 10px; overflow: hidden; border: 1px solid var(--ct-border); }
 [data-testid='stDataFrame'] th { background: var(--ct-surface-sunken) !important; color: var(--ct-heading) !important; font-weight: 600 !important; }
 
-/* Chat */
+/* Chat. The floating chat is a popover rendered outside the app root, where
+   Streamlit's color-scheme does not reach and the light-dark() tokens fall back
+   to light. Tinting from currentColor (Streamlit's themed text colour) keeps the
+   bubbles readable in both themes, wherever they are rendered. */
 [data-testid='stChatMessage'] {
-    background: var(--ct-surface) !important; border-radius: 12px !important;
-    border: 1px solid var(--ct-border) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    background: color-mix(in srgb, currentColor 6%, transparent) !important; border-radius: 12px !important;
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.03);
 }
 
 /* Floating AI chat (Page.chat_widget): round button pinned bottom-right on every page */
@@ -252,10 +255,17 @@ class Page:
         if self.header:
             self.page_header(*self.header)
         self.render()
-        self.chat_widget()
+        self.chat_widget(self.name, self.chat_context())
 
     def sidebar(self) -> None:
         """Page-specific sidebar content, shown above the user badge."""
+
+    def chat_context(self) -> str | None:
+        """
+        What this page currently shows (filters and figures), sent with each
+        chat question. None falls back to a general snapshot of all the data.
+        """
+        return None
 
     def render(self) -> None:
         raise NotImplementedError
@@ -285,29 +295,27 @@ class Page:
 
     # ── Floating AI chat ───────────────────────────────────────────────────────
     @staticmethod
-    def ask_chatbot(question: str) -> str:
+    def ask_chatbot(question: str, page_name: str, page_context: str | None) -> str:
         """Send a question with the running history and record both turns."""
-        st.session_state.setdefault("chat_history", [])          # for display
-        st.session_state.setdefault("chat_gemini_history", [])   # in Gemini's format
-        data_context = emissions_snapshot(load_emissions(), load_stirpat_panel())
-        reply = chat_response(st.session_state.chat_gemini_history, question, data_context)
-        st.session_state.chat_history += [
+        history = st.session_state.setdefault("chat_history", [])  # shown in the panel and sent to the model
+        data_context = page_context or (f"PAGE: {page_name} (no page-specific figures; whole dataset below)\n"
+                                        + emissions_snapshot(load_emissions(), load_stirpat_panel()))
+        reply = chat_response(history, question, data_context)
+        history += [
             {"role": "user", "content": question},
             {"role": "assistant", "content": reply},
-        ]
-        st.session_state.chat_gemini_history += [
-            {"role": "user", "parts": [question]},
-            {"role": "model", "parts": [reply]},
         ]
         return reply
 
     @staticmethod
     @st.fragment
-    def chat_widget() -> None:
+    def chat_widget(page_name: str, page_context: str | None) -> None:
         """
         Chat button fixed bottom-right (see GLOBAL_CSS). It shares session
         state with the What-If chatbot, so the conversation follows the user
-        across pages. A fragment, so sending a message doesn't rerun the page.
+        across pages. A fragment, so sending a message doesn't rerun the page;
+        a fragment rerun reuses the arguments of the last full page run, so
+        ``page_context`` always matches what the page shows.
         """
         history = st.session_state.setdefault("chat_history", [])
         with st.container(key="ct_chat_fab"), st.popover("Chat", help=f"Chat with {CHATBOT_NAME}"):
@@ -327,7 +335,7 @@ class Page:
                         with st.chat_message("user"):
                             st.markdown(question)
                         with st.chat_message("assistant", avatar=CHATBOT_AVATAR), st.spinner("Thinking…"):
-                            st.markdown(Page.ask_chatbot(question))
+                            st.markdown(Page.ask_chatbot(question, page_name, page_context))
                     elif not history:
                         for i, suggestion in enumerate(CHAT_SUGGESTIONS):
                             st.button(suggestion, key=f"fab_sug_{i}", on_click=st.session_state.__setitem__,

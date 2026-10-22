@@ -47,11 +47,14 @@ PAGE_ROUTES = {
 DEFAULT_PAGE = "Main Dashboard"
 NAVIGATION_OPTIONS = tuple(PAGE_ROUTES)
 
-# ── AI (Google Gemini) ────────────────────────────────────────────────────────
+# ── AI (Groq) ─────────────────────────────────────────────────────────────────
 # Secrets come from the environment only; never hard-code the key.
-GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
-GEMINI_MODEL_LABEL = "Gemini 2.5 Flash"
+GROQ_API_KEY_ENV = "GROQ_API_KEY"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL_NAME = "openai/gpt-oss-120b"
+GROQ_MODEL_LABEL = "GPT-OSS 120B (Groq)"
+GROQ_TIMEOUT_SECONDS = 60
+GROQ_RATE_LIMIT_MAX_WAIT_SECONDS = 10  # longest wait before the one retry after a 429
 CHAT_SUGGESTIONS = (
     "Which company emits the most, and why?",
     "Is the STIRPAT forecast reliable?",

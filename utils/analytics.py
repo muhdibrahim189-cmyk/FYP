@@ -14,7 +14,7 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, r2_score
 
 from data.emission_factors import ENERGY_SCOPE
-from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, yoy_change
+from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, share_pct, yoy_change
 from utils.config import (
     ANOMALY_MIN_HISTORY, ANOMALY_Z_THRESHOLD, FORECAST_MONTHS, STIRPAT_RIDGE_ALPHA, STIRPAT_TRAIN_SHARE,
 )
@@ -155,6 +155,7 @@ class StirpatResult:
     test_wape_pct: float     # Σ|actual − predicted| / Σ actual; robust to tiny company totals
     test_rmse: float
     coefficients: dict[str, float]  # elasticities of I to P, A, T
+    trend_pct_per_year: dict[str, float]  # company → yearly % change from the trend term (trend targets only)
 
 
 def _stirpat_design(panel: pd.DataFrame, companies: list[str], trend_origin: pd.Timestamp | None = None) -> pd.DataFrame:
@@ -249,6 +250,9 @@ def stirpat_forecast(panel: pd.DataFrame, companies: Iterable[str], target: str 
         test_wape_pct=float((test[target] - test["pred"]).abs().sum() / test[target].sum() * 100),
         test_rmse=float(np.sqrt(mean_squared_error(test[target], test["pred"]))),
         coefficients=dict(zip(STIRPAT_DRIVERS, map(float, final.coef_[:len(STIRPAT_DRIVERS)]))),
+        trend_pct_per_year={name.removeprefix("trend_"): float(np.expm1(coef) * 100)
+                            for name, coef in zip(final.feature_names_in_, final.coef_)
+                            if name.startswith("trend_")},
     )
 
 
@@ -280,6 +284,98 @@ def emissions_snapshot(df: pd.DataFrame, panel: pd.DataFrame) -> str:
                     f"WAPE {result.test_wape_pct:.1f}%, MAPE {result.test_mape_pct:.1f}%"
                 )
     lines.append("Note: 2026 figures are synthetic projections, not reported data.")
+    return "\n".join(lines)
+
+
+def _pct(current: float, previous: float) -> str:
+    return f"{yoy_change(current, previous):+.1f}%" if previous else "n/a"
+
+
+def dashboard_context(df: pd.DataFrame, filters: dict[str, object], change_pct: float,
+                      forecasts: dict[str, "StirpatResult"], tax_rate_myr: float) -> str:
+    """
+    Plain-text brief of exactly what the Main Dashboard shows for the user's
+    current filters, so the AI chatbot can analyse it instead of answering in
+    general terms. ``df`` is the filtered emission records (co2e_kg).
+    """
+    if df.empty:
+        return "Main Dashboard: no data for the current filters."
+    mt = df.assign(mt=df["co2e_kg"] / KG_PER_MT, year=df["date"].dt.year)
+    lines = ["PAGE: Main Dashboard",
+             "CURRENT FILTERS: " + "; ".join(f"{k}: {v}" for k, v in filters.items())]
+
+    totals = mt.pivot_table(index="year", columns="scope", values="mt", aggfunc="sum").fillna(0)
+    totals["total"] = totals.sum(axis=1)
+    total = float(totals["total"].sum())
+    scope_parts = ", ".join(f"Scope {c} {totals[c].sum():,.2f} Mt = {share_pct(totals[c].sum(), total):.1f}%"
+                            for c in (1, 2) if c in totals)
+    lines.append(f"KPI CARDS: total {total:,.2f} Mt ({scope_parts}); change {change_pct:+.1f}% "
+                 "(later half of the selected months vs the earlier half)")
+
+    yearly = []
+    for year, row in totals.iterrows():
+        prev = totals["total"].get(year - 1)
+        parts = ", ".join(f"S{c} {row[c]:.2f}" for c in (1, 2) if c in totals)
+        yearly.append(f"{year}: {parts}, total {row['total']:.2f}"
+                      + (f" ({_pct(row['total'], prev)} vs {year - 1})" if prev is not None else ""))
+    lines.append("BY YEAR (Mt): " + "; ".join(yearly))
+
+    by_company = mt.pivot_table(index="facility", columns="year", values="mt", aggfunc="sum").fillna(0)
+    years = list(by_company.columns)
+    company_lines = []
+    for company, row in by_company.sum(axis=1).sort_values(ascending=False).items():
+        trend = (f", {years[0]}→{years[-1]} {_pct(by_company.loc[company, years[-1]], by_company.loc[company, years[0]])}"
+                 if len(years) > 1 else "")
+        company_lines.append(f"{company} {row:.2f} ({share_pct(row, total):.1f}%{trend})")
+    lines.append("BY COMPANY (Mt, share of selection): " + "; ".join(company_lines))
+    lines.append("BY COMPANY AND YEAR (Mt): " + "; ".join(
+        f"{company}: " + ", ".join(f"{year} {value:.2f}" for year, value in row.items())
+        for company, row in by_company.iterrows()))
+
+    monthly = mt.groupby("month")["mt"].sum()
+    lines.append(f"MONTHLY (line chart): {len(monthly)} months {monthly.index[0]}–{monthly.index[-1]}, "
+                 f"average {monthly.mean():.2f} Mt; highest {monthly.idxmax()} ({monthly.max():.2f}); "
+                 f"lowest {monthly.idxmin()} ({monthly.min():.2f}); last 12 months: "
+                 + ", ".join(f"{m} {v:.2f}" for m, v in monthly.tail(12).items()))
+    by_calendar_month = monthly.groupby(monthly.index.str[5:]).mean()
+    high, low = (date(2000, int(mm), 1).strftime("%B") for mm in (by_calendar_month.idxmax(), by_calendar_month.idxmin()))
+    lines.append(f"SEASONALITY (average by calendar month): highest {high}, lowest {low}")
+
+    by_scope = mt.pivot_table(index="month", columns="scope", values="mt", aggfunc="sum")
+    history = {"Scope 1": by_scope.get(1), "Scope 2": by_scope.get(2), "Total (Scope 1 + 2)": monthly}
+    for label, result in forecasts.items():
+        fc = result.forecast
+        months = fc["Month"].tolist()
+        text = (f"STIRPAT {label} FORECAST {months[0]}–{months[-1]}: "
+                + ", ".join(f"{m} {v:.2f}" for m, v in zip(months, fc["Predicted"]))
+                + f"; sum {fc['Predicted'].sum():.2f} Mt")
+        past, year_before = history.get(label), [f"{int(m[:4]) - 1}{m[4:]}" for m in months]
+        if past is not None and all(m in past.index for m in year_before):
+            text += f" ({_pct(fc['Predicted'].sum(), past[year_before].sum())} vs the same months a year earlier)"
+        text += (f"; test accuracy (2025, all five companies) {100 - result.test_wape_pct:.1f}% "
+                 f"(WAPE {result.test_wape_pct:.1f}%, "
+                 f"MAPE {result.test_mape_pct:.1f}%), test R² {result.test_r2:.3f}; elasticities "
+                 + ", ".join(f"{k} {v:.2f}" for k, v in result.coefficients.items()))
+        selected = set(df["facility"])
+        if result.trend_pct_per_year:
+            text += ("; company trend terms %/yr (model correction terms that offset the elasticities, "
+                     "NOT forecast growth rates; only BP's matches a real fall) " + ", ".join(
+                f"{c} {v:+.1f}" for c, v in result.trend_pct_per_year.items() if c in selected))
+        lines.append(text)
+
+    tax = df["co2e_kg"].sum() / KG_PER_TONNE * tax_rate_myr
+    lines.append(f"CARBON TAX at MYR {tax_rate_myr:.0f}/t: total MYR {tax:,.0f} over all {len(monthly)} "
+                 f"selected months (not per year), average MYR {tax / len(monthly) * 12:,.0f} per year "
+                 f"and MYR {tax / len(monthly):,.0f} per month")
+    lines.append("DATA NOTES: 2021–2025 monthly values are disaggregated from annual company reports; 2026 is "
+                 "synthetic (assumption-based), not reported, and is not used to fit STIRPAT. Scope 2 is "
+                 "location-based; Chevron's is market-based and rounded to whole Mt, so its year-to-year changes "
+                 "are coarse. STIRPAT is fitted on all five companies; forecasts sum the selected companies. In the "
+                 "Scope 2 model the company trends and the elasticities overlap and partly offset each other (e.g. "
+                 "a positive trend can offset a driver-based decline), so they explain the forecast together but "
+                 "should not be read one by one as real growth rates or sensitivities; only BP's trend clearly "
+                 "matches its reported fall (2.4 to 0.7 Mt, 2021–2025). Scope 1 and total elasticities are "
+                 "interpretable.")
     return "\n".join(lines)
 
 

@@ -1,40 +1,30 @@
-"""Google Gemini integration with an offline-friendly fallback."""
+"""Groq chat completions (OpenAI-compatible API) with an offline-friendly fallback."""
 
 import logging
 import os
-from collections.abc import Callable
-from importlib.util import find_spec
+import time
+
+import requests
 
 from data.emission_factors import CARBON_TAX_RATE_MYR, PENINSULAR_GRID_FACTOR
-from utils.config import CHATBOT_NAME, GEMINI_API_KEY_ENV, GEMINI_MODEL_NAME
+from utils.config import (
+    CHATBOT_NAME, GROQ_API_KEY_ENV, GROQ_API_URL, GROQ_MODEL_NAME, GROQ_RATE_LIMIT_MAX_WAIT_SECONDS,
+    GROQ_TIMEOUT_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv(GEMINI_API_KEY_ENV, "").strip()
-_GENAI_AVAILABLE = find_spec("google.generativeai") is not None
-
-_model = None
-
-
-def _get_model():
-    """Create the Gemini client lazily so the app starts without the SDK."""
-    global _model
-    if _model is None:
-        import google.generativeai as genai
-
-        genai.configure(api_key=GEMINI_API_KEY)
-        _model = genai.GenerativeModel(GEMINI_MODEL_NAME, system_instruction=SYSTEM_CONTEXT)
-    return _model
+GROQ_API_KEY = os.getenv(GROQ_API_KEY_ENV, "").strip()
 
 
 def is_api_configured() -> bool:
-    return _GENAI_AVAILABLE and bool(GEMINI_API_KEY)
+    return bool(GROQ_API_KEY)
 
 
 def _unavailable_message(feature: str) -> str:
     return (
-        f"⚠️ {feature} is unavailable because Gemini is not configured. "
-        f"Set the `{GEMINI_API_KEY_ENV}` environment variable to enable it."
+        f"⚠️ {feature} is unavailable because the Groq API is not configured. "
+        f"Set the `{GROQ_API_KEY_ENV}` environment variable to enable it."
     )
 
 
@@ -45,15 +35,32 @@ government prototype that monitors Scope 1 & 2 GHG emissions of five oil and gas
 (BP, Chevron, ConocoPhillips, Equinor, ExxonMobil), their carbon tax exposure and STIRPAT
 forecasts. Users are government officers, not specialists.
 
+Each question comes with "Page data": the page the user is on, their CURRENT FILTERS and the
+exact figures that page shows for those filters. Treat it as what the user is looking at.
+
 How to answer:
-- Keep it short: at most 80 words, or 3 short bullet points. No headings, no long lists.
-- Start with the direct answer. Then give one reason WHY, in plain language.
-- Finish with one practical next step only when it helps.
-- For figures about these companies, use only the dashboard data supplied with the question.
-- For general carbon-reduction questions (e.g. solar PV, energy efficiency, carbon markets),
-  answer from general knowledge and mark any figure as approximate. Never invent company data.
-- Emissions in SPK are in million tonnes CO₂e (Mt).
-- Give a longer answer only when the user explicitly asks for more detail.
+- Ground every claim about these companies in the Page data. Quote the actual numbers (Mt, %,
+  months, companies). Simple arithmetic on them (differences, shares, % change) is fine; never
+  invent figures. If the data needed is not there, say what is missing.
+- Speak to the user's selection ("for the 2024–2025 Chevron data you selected…"). If the filters
+  limit the answer (e.g. one year only, synthetic 2026 included), say so.
+- Never just describe what a chart looks like (titles, colours, dashed lines). Analyse it.
+- Match the length to the question:
+  - Simple factual question: 1–3 sentences with the number.
+  - "Explain", "insight", "what happened", "why", "analyse" questions: bullet points only, at
+    most 6 bullets and 120 words in total, each bullet one short sentence with its number.
+    Pick only the most important points; leave the rest for follow-up questions. Format:
+    - **Key finding:** the headline, with numbers.
+    - **What changed:** 1–2 bullets: the overall trend over time, the biggest rise or fall
+      (when, by how much), the peak or low month.
+    - **Why:** 1–2 bullets: the company or scope driving it (share, change); for forecasts, the
+      main STIRPAT driver (elasticity: % change in emissions per 1% change in a driver).
+    - **So what:** one implication or next step for a government officer.
+    No paragraphs, no headings, no sub-bullets. Check that bullets do not contradict each other.
+  - Longer only when the user asks for more detail.
+- Flag uncertainty honestly: 2026 is synthetic (assumption-based), and forecasts depend on it.
+- For general carbon-reduction questions (solar PV, energy efficiency, carbon markets), answer
+  from general knowledge and mark any figure as approximate.
 - For questions unrelated to emissions or sustainability, say briefly that you help with
   carbon emissions and the SPK dashboard.
 
@@ -62,15 +69,20 @@ Key facts:
 - Peninsular Malaysia grid factor: {PENINSULAR_GRID_FACTOR} kg CO₂e/kWh
 - Scope 1 = direct emissions (fuel combustion, flaring, fugitives)
 - Scope 2 = indirect emissions from purchased electricity/heat
-- STIRPAT: ln I = ln α + a·ln P + b·ln A + c·ln T (P production, A revenue, T energy intensity)
+- STIRPAT: ln I = ln α + a·ln P + b·ln A + c·ln T (P production, A revenue, T energy intensity);
+  Scope 2 adds + δ·t, a company-specific yearly trend
+- MAPE overstates Scope 2 error because Equinor's Scope 2 is tiny; WAPE weights errors by tonnes
 
 SPK pages and charts (use these to explain what a user sees):
 - Main Dashboard:
-  - KPI cards: total, Scope 1 and Scope 2 emissions (Mt) for the filtered period, with change vs prior period.
+  - KPI cards: total, Scope 1 and Scope 2 emissions (Mt) for the filtered period; the total's
+    change compares the later half of the selected months with the earlier half.
   - Monthly Trend & STIRPAT Forecast (Line Chart): monthly Scope 1, Scope 2 and total emissions
-    Jan 2021 – Dec 2026, with dashed STIRPAT forecast lines for the next 6 months (shaded area).
-  - STIRPAT model accuracy (Table): train/test R², MAPE, accuracy, RMSE and elasticities a, b, c
-    for the Scope 1, Scope 2 and total models (trained on 80% of months, tested on the last 20%).
+    for the selected years, with dashed STIRPAT forecast lines for Jan–Jun 2027 (shaded area).
+  - STIRPAT model accuracy (Table): accuracy = 100% − WAPE, plus MAPE, R², RMSE and elasticities
+    a, b, c. Models are fitted on reported 2021–2025 data only (trained on 2021–2024, tested on
+    2025); synthetic 2026 only supplies the drivers the forecast continues from. Scope 2 adds a
+    company-specific time trend for electricity sourcing (renewable purchases, grid mix).
   - Facility Heatmap & Trellis (Bar Chart & Heatmap): total emissions per company, and a
     company × month heatmap where darker cells mean higher emissions.
   - Carbon Tax Analysis (Bar & Line Chart): monthly carbon tax (bars) and cumulative tax (line) in MYR.
@@ -82,20 +94,31 @@ SPK pages and charts (use these to explain what a user sees):
 """
 
 
-def _ask(feature: str, request: Callable[[object], str]) -> str:
-    """Run ``request(model)``; return its text or a user-safe message."""
+def _complete(messages: list[dict[str, str]], feature: str) -> str:
+    """Send ``messages`` after the system instruction; return the reply or a user-safe message."""
     if not is_api_configured():
         return _unavailable_message(feature)
+    def post() -> requests.Response:
+        return requests.post(
+            GROQ_API_URL,
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={"model": GROQ_MODEL_NAME,
+                  "messages": [{"role": "system", "content": SYSTEM_CONTEXT}, *messages]},
+            timeout=GROQ_TIMEOUT_SECONDS,
+        )
+
     try:
-        return request(_get_model())
+        response = post()
+        if response.status_code == 429:  # per-minute token limit: wait as told, then retry once
+            wait = float(response.headers.get("retry-after", GROQ_RATE_LIMIT_MAX_WAIT_SECONDS))
+            time.sleep(min(wait, GROQ_RATE_LIMIT_MAX_WAIT_SECONDS))
+            response = post()
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
     except Exception:
         # Keep provider details out of the UI but record them for operators.
-        logger.exception("Gemini request failed for %s", feature)
+        logger.exception("Groq request failed for %s", feature)
         return f"⚠️ {feature} could not be generated right now. Please try again later."
-
-
-def _generate(prompt: str, feature: str) -> str:
-    return _ask(feature, lambda model: model.generate_content(prompt).text)
 
 
 def get_whatif_recommendation(scenario_text: str) -> str:
@@ -106,18 +129,25 @@ def get_whatif_recommendation(scenario_text: str) -> str:
         f"In at most 150 words, give four short bullet points: is it realistic, the expected "
         f"carbon and cost savings, the first implementation step, and the main risk."
     )
-    return _generate(prompt, "AI scenario analysis")
+    return _complete([{"role": "user", "content": prompt}], "AI scenario analysis")
+
+
+# Repeated with every question: models follow rules next to the question more
+# closely than the system instruction alone.
+ANSWER_REMINDER = (
+    "Answer rules: ground every company figure in the Page data and speak to the user's filters. "
+    "Simple question: 1–3 sentences. Explanation or insight question: bullet points only "
+    "(Key finding / What changed / Why / So what), at most 6 one-sentence bullets and 120 words. "
+    "Do not present Scope 2 company trend terms as growth rates."
+)
 
 
 def chat_response(conversation_history: list, user_message: str, data_context: str = "") -> str:
     """
     Multi-turn chatbot (the floating chat on every page).
-    conversation_history: list of dicts with 'role' and 'parts' keys.
-    data_context: current dashboard figures, sent with this question only.
+    conversation_history: earlier turns as {'role': 'user' | 'assistant', 'content': str}.
+    data_context: current page figures, sent with this question only.
     """
-    def send(model) -> str:
-        chat = model.start_chat(history=conversation_history)
-        message = f"Dashboard data:\n{data_context}\n\nQuestion: {user_message}" if data_context else user_message
-        return chat.send_message(message).text
-
-    return _ask("The AI chatbot", send)
+    message = (f"Page data:\n{data_context}\n\nQuestion: {user_message}\n\n{ANSWER_REMINDER}"
+               if data_context else user_message)
+    return _complete([*conversation_history, {"role": "user", "content": message}], "The AI chatbot")

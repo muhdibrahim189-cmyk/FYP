@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from utils.analytics import (
-    detect_anomaly, emissions_snapshot, filter_emissions, monthly_ledger_summary, monthly_summary,
+    dashboard_context, detect_anomaly, emissions_snapshot, filter_emissions, monthly_ledger_summary, monthly_summary,
     period_over_period_change, scope_totals,
     search_rows, stirpat_forecast, to_safe_csv,
 )
@@ -90,6 +90,24 @@ def make_stirpat_panel(months: int = 36) -> pd.DataFrame:
     return panel.assign(S1=panel["I"] * 0.9, S2=panel["I"] * 0.1, synthetic=False)
 
 
+class DashboardContextTests(unittest.TestCase):
+    def test_describes_the_filtered_selection_with_its_numbers(self):
+        df = make_records().assign(co2e_kg=lambda f: f["co2e_kg"] * 1e9)  # 1,000–4,000 Mt
+        forecast = {"Total (Scope 1 + 2)": stirpat_forecast(make_stirpat_panel(), ["A Co", "B Co"])}
+        text = dashboard_context(df, {"years": "2024, 2025", "companies": "HQ, Plant"}, 133.3, forecast, 16)
+        self.assertIn("CURRENT FILTERS: years: 2024, 2025; companies: HQ, Plant", text)
+        self.assertIn("total 10,000.00 Mt (Scope 1 4,000.00 Mt = 40.0%", text)
+        self.assertIn("2025: S1 0.00, S2 4000.00, total 4000.00 (-33.3% vs 2024)", text)
+        self.assertIn("Plant 7000.00 (70.0%", text)
+        self.assertIn("BY COMPANY AND YEAR (Mt): HQ: 2024 3000.00, 2025 0.00; Plant: 2024 3000.00, 2025 4000.00", text)
+        self.assertIn("highest 2025-01 (4000.00)", text)
+        self.assertIn("STIRPAT Total (Scope 1 + 2) FORECAST 2024-01–2024-06", text)
+        self.assertIn("CARBON TAX at MYR 16/t: total MYR 160,000,000,000", text)
+
+    def test_empty_selection(self):
+        self.assertIn("no data", dashboard_context(pd.DataFrame(), {}, 0, {}, 16))
+
+
 class SnapshotTests(unittest.TestCase):
     def test_summarises_years_companies_and_forecasts_in_mt(self):
         df = make_records().assign(co2e_kg=lambda f: f["co2e_kg"] * 1e9)  # 1,000–4,000 Mt
@@ -137,6 +155,8 @@ class StirpatTests(unittest.TestCase):
         result = stirpat_forecast(panel, ["A Co"], target="S2")
         self.assertLess(result.test_wape_pct, 1.0)
         self.assertLess(result.forecast["Predicted"].iloc[-1], result.test["Actual"].iloc[-1])
+        self.assertAlmostEqual(result.trend_pct_per_year["A Co"], -30.0, delta=2.0)  # T also trends, so not exact
+        self.assertEqual(stirpat_forecast(panel, ["A Co"], target="S1").trend_pct_per_year, {})
 
     def test_synthetic_months_extend_the_drivers_but_are_not_fitted(self):
         panel = make_stirpat_panel(months=48)

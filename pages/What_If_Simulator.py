@@ -9,7 +9,7 @@ from utils.ai_helper import get_whatif_recommendation
 from utils.analytics import scope_totals
 from utils.carbon_calculator import KG_PER_MT, carbon_tax, kg_to_mt, share_pct
 from utils.charts import AMBER, BLUE, GREEN, GRID_AXIS, HEADING, RED, apply_layout
-from utils.config import GEMINI_MODEL_LABEL
+from utils.config import GROQ_MODEL_LABEL
 from utils.simulation import SCOPE1_LEVERS, SCOPE2_LEVERS, Lever, describe_changes, simulate_emissions
 from utils.ui import Page
 
@@ -154,7 +154,7 @@ class WhatIfSimulator(Page):
 
         self.section_title("🤖 AI Scenario Analysis")
         with st.container(border=True):
-            self.ai_panel_header(f"✨ {GEMINI_MODEL_LABEL} · Scenario Analysis")
+            self.ai_panel_header(f"✨ {GROQ_MODEL_LABEL} · Scenario Analysis")
             if changes_applied:
                 analyse = st.button("🔍 Analyse This Scenario", type="primary", key="analyse_scenario")
                 self.cached_ai_text("sim_ai_cache", analyse, "🤖 Analysing your scenario…",

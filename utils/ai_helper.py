@@ -6,7 +6,7 @@ import time
 
 import requests
 
-from data.emission_factors import CARBON_TAX_RATE_MYR, PENINSULAR_GRID_FACTOR
+from data.emission_factors import CARBON_TAX_RATE_MYR, COMPANY_FULL_NAMES, PENINSULAR_GRID_FACTOR
 from utils.config import (
     CHATBOT_NAME, GROQ_API_KEY_ENV, GROQ_API_URL, GROQ_MODEL_NAME, GROQ_RATE_LIMIT_MAX_WAIT_SECONDS,
     GROQ_TIMEOUT_SECONDS,
@@ -65,6 +65,7 @@ How to answer:
   carbon emissions and the SPK dashboard.
 
 Key facts:
+- Company abbreviations: {"; ".join(f"{short} = {full}" for short, full in COMPANY_FULL_NAMES.items())}
 - Malaysia carbon tax: MYR {CARBON_TAX_RATE_MYR:.0f} / tonne CO₂e (2026)
 - Peninsular Malaysia grid factor: {PENINSULAR_GRID_FACTOR} kg CO₂e/kWh
 - Scope 1 = direct emissions (fuel combustion, flaring, fugitives)
@@ -76,7 +77,9 @@ Key facts:
 SPK pages and charts (use these to explain what a user sees):
 - Main Dashboard:
   - KPI cards: total, Scope 1 and Scope 2 emissions (Mt) for the filtered period; the total's
-    change compares the later half of the selected months with the earlier half.
+    change compares the later half of the selected months with the earlier half. A fourth card,
+    Carbon Tax / Year, is the selection's carbon tax at the sidebar rate per year of selected
+    months (total ÷ months × 12), with the period total underneath.
   - Monthly Trend & STIRPAT Forecast (Line Chart): monthly Scope 1, Scope 2 and total emissions
     for the selected years, with dashed STIRPAT forecast lines for Jan–Jun 2027 (shaded area).
   - STIRPAT model accuracy (Table): accuracy = 100% − WAPE, plus MAPE, R², RMSE and elasticities
@@ -88,8 +91,11 @@ SPK pages and charts (use these to explain what a user sees):
   - Carbon Tax Analysis (Bar & Line Chart): monthly carbon tax (bars) and cumulative tax (line) in MYR.
 - What-If Simulator: sliders reduce emission levers; Simulation Results (KPI Cards & Bar Chart)
   and Baseline vs Simulation Comparison (Area Chart) show the effect; AI Scenario Analysis comments on it.
-- Data Centre: filterable records table and CSV export.
-- Sustainability: data entry form with a live CO₂e estimate, approval queue and audit log.
+- Data Centre: every ledger entry (the workbook's reported totals plus data-entry submissions) in a
+  filterable table with CSV export, and below it a Monthly Summary (Table): one row per company and
+  month with Scope 1, Scope 2 and total (t CO₂e) and power consumption (MWh).
+- Sustainability: data entry form with a live CO₂e estimate (users can undo their own entries),
+  approval queue and audit log.
 - Sidebar filters (year, company, scope) change what the dashboard charts show.
 """
 

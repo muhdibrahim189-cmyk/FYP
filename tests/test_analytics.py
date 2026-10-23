@@ -53,7 +53,7 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(len(filter_emissions(make_records(), years=[2025])), 1)
 
     def test_submitted_by(self):
-        self.assertEqual(len(filter_emissions(make_records(), submitted_by="admin")), 2)
+        self.assertEqual(len(filter_emissions(make_records(), submitted_by=["admin"])), 2)
 
 
 class SearchTests(unittest.TestCase):

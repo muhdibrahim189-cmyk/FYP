@@ -10,6 +10,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DATABASE_PATH = DATA_DIR / "emissions.db"
 CARBON_EMISSION_DATA_PATH = PROJECT_ROOT / "Carbon_Emission_Data.xlsx"
+# Carbon tax statement PDF (utils/report.py), laid out after assets/Sample Report FYP.pdf.
+REPORT_PAYMENT_DAYS = 30  # invoice due date = issue date + this many days
 
 APP_NAME = "Sistem Pemantauan Karbon"
 APP_SHORT_NAME = "SPK"  # browser-tab titles

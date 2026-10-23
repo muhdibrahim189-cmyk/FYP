@@ -17,7 +17,7 @@ from utils.carbon_calculator import (
     KG_PER_TONNE, kg_to_mt, share_pct,
 )
 from utils.charts import (
-    AMBER, BLUE, GREEN, HEADING, HOVER_FORMAT, SCOPE_COLORS, apply_layout,
+    AMBER, BLUE, GREEN, HEADING, HOVER_FORMAT, RED, SCOPE_COLORS, apply_layout,
 )
 from utils.config import FORECAST_MONTHS, STIRPAT_TRAIN_SHARE
 from utils.data_manager import load_emissions, load_stirpat_panel
@@ -106,6 +106,13 @@ class MainDashboard(Page):
             return "delta-down", f"▼ {abs(change_pct):.1f}% vs prior period"
         return "delta-neu", "— 0.0% vs prior period"
 
+    @staticmethod
+    def myr_scaled(amount: float) -> tuple[str, str]:
+        """(value, unit) with MYR in billions or millions, e.g. ('3.51', 'MYR billion')."""
+        if amount >= 1e9:
+            return f"{amount / 1e9:,.2f}", "MYR billion"
+        return f"{amount / 1e6:,.2f}", "MYR million"
+
     def render_kpis(self) -> None:
         totals = scope_totals(self.df)
         self.total_t = kg_to_mt(totals.total_kg)
@@ -117,11 +124,20 @@ class MainDashboard(Page):
         self.change_pct = period_over_period_change(self.df)
         delta_class, delta_text = self.change_delta(self.change_pct)
 
+        # Carbon tax at the sidebar rate, per year of the selected months (so partial years still compare).
+        months = self.df["month"].nunique()
+        tax_total = totals.total_kg / KG_PER_TONNE * self.tax_rate
+        tax_value, tax_unit = self.myr_scaled(tax_total / months * 12)
+        total_value, total_unit = self.myr_scaled(tax_total)
+        tax_card = ("Carbon Tax / Year", tax_value, f"{tax_unit} per year @ MYR {self.tax_rate:,.0f}/t",
+                    f"Total MYR {total_value} {total_unit.removeprefix('MYR ')} over {months} months",
+                    "delta-neu", RED)
+
         cards = (
             ("Total CO₂e", f"{self.total_t:,.2f}", "million tonnes (Mt)", delta_text, delta_class, HEADING),
             ("Scope 1", f"{self.s1_t:,.2f}", "Mt CO₂e", f"{self.s1_share:.1f}% of total", "delta-neu", AMBER),
             ("Scope 2", f"{self.s2_t:,.2f}", "Mt CO₂e", f"{self.s2_share:.1f}% of total", "delta-neu", BLUE),
-            ("—", "—", "", "Coming soon", "delta-neu", HEADING),  # placeholder slot
+            tax_card,
         )
         for col, (label, value, caption, delta, d_cls, color) in zip(st.columns(len(cards), gap="small"), cards):
             with col:

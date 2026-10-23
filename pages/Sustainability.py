@@ -16,15 +16,15 @@ import streamlit as st
 from data.emission_factors import (
     ALL_FACTORS, COMPANIES, ENERGY_SCOPE, ENERGY_SOURCES, SCOPE1_SOURCES, SCOPE2_SOURCES, UNIT_NAMES,
 )
-from utils.analytics import monthly_ledger_summary, search_rows, to_safe_csv
+from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_username, has_permission
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
 from utils.data_manager import (
     approve_submission, load_activity_log, load_all_pending, load_database_emissions,
-    load_pending, reject_submission, submit_emission,
+    load_pending, reject_submission, submit_emission, withdraw_submission,
 )
-from utils.ui import Page
+from utils.ui import Page, two_decimals
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ ACTION_STYLES = {                       # action -> (colour, icon)
     "SUBMITTED_PENDING":  ("var(--ct-alert-text)", "⚠️"),
     "APPROVED":           ("#2563EB", "👍"),
     "REJECTED":           ("#b91c1c", "🚫"),
+    "WITHDRAWN":          ("var(--ct-muted)", "↩️"),
     "LOGIN":              ("#7c3aed", "🔑"),
     "LOGOUT":             ("var(--ct-muted)", "🚪"),
 }
@@ -81,7 +82,7 @@ class Sustainability(Page):
             border-radius:8px;padding:0.7rem 0.9rem;margin-top:0.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.02);'>
           <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;'>Estimated CO₂e Calculation</div>
           <div style='color:var(--ct-heading);font-size:1.35rem;font-weight:700;font-family:Poppins,sans-serif;'>{co2e_kg:,.2f} kg</div>
-          <div style='color:var(--ct-muted);font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):.4f} tonnes ·
+          <div style='color:var(--ct-muted);font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):,.2f} tonnes ·
             Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}</div>
         </div>""", unsafe_allow_html=True)
 
@@ -115,7 +116,7 @@ class Sustainability(Page):
 
             - Source: **{data['source']}**
             - Quantity: **{data['quantity']:,.2f} {unit_label}**
-            - CO₂e: **{result['co2e_kg']:,.2f} kg ({kg_to_tonnes(result['co2e_kg']):.4f} tonnes)**
+            - CO₂e: **{result['co2e_kg']:,.2f} kg ({kg_to_tonnes(result['co2e_kg']):,.2f} tonnes)**
             - Carbon Tax: **MYR {carbon_tax(result['co2e_kg']):,.2f}**
             """)
 
@@ -127,24 +128,21 @@ class Sustainability(Page):
             self.muted_text("No submissions from your account yet.")
             return
         recent = mine.sort_values("submitted_at", ascending=False).head(RECENT_SUBMISSIONS_LIMIT)
-        table = recent[["date", "facility", "scope", "source", "quantity", "co2e_kg", "status", "submitted_at"]].copy()
-        table["co2e_kg"] = table["co2e_kg"].round(2)
+        table = recent[["id", "date", "facility", "scope", "source", "quantity", "co2e_kg", "status",
+                        "submitted_at"]].reset_index(drop=True)
         table["status"] = table["status"].map(SUBMISSION_STATUS_ICONS).fillna("?")
-        st.dataframe(table, width="stretch", hide_index=True)
-
-    def render_monthly_summary(self) -> None:
-        self.section_title("📅 Monthly Summary (Table)")
-        self.muted_text("Each company's entries for a month combined into one Scope 1 and one Scope 2 figure.")
-        summary = monthly_ledger_summary(load_database_emissions())
-        if summary.empty:
-            self.muted_text("No approved entries yet.")
+        self.muted_text("Submitted something by mistake? Select its row, then click Undo.")
+        event = st.dataframe(two_decimals(table, ["quantity", "co2e_kg"]), width="stretch", hide_index=True,
+                             on_select="rerun", selection_mode="single-row", key="recent_submissions")
+        if not event.selection.rows:
             return
-        company = st.selectbox("Company", [ALL_OPTION, *COMPANIES], key="summary_company")
-        if company != ALL_OPTION:
-            summary = summary[summary["Company"] == company]
-        st.dataframe(summary, width="stretch", hide_index=True,
-                     column_config={col: st.column_config.NumberColumn(format="%.2f")
-                                    for col in summary.columns if col not in ("Month", "Company")})
+        row = table.iloc[event.selection.rows[0]]
+        if st.button(f"↩️ Undo entry #{row['id']}: {row['source']}, {row['facility']} {row['date']:%Y-%m-%d} "
+                     f"({row['quantity']:,.2f})", key="undo_submission"):
+            if withdraw_submission(int(row["id"]), self.username):
+                st.toast(f"Entry #{row['id']} withdrawn. It no longer counts in any total.", icon="↩️")
+                st.rerun()
+            st.error("❌ That entry could not be undone (it may already have been withdrawn).")
 
     def render_entry_tab(self) -> None:
         self.section_title("📝 Submit New Emission Record")
@@ -201,8 +199,6 @@ class Sustainability(Page):
                 }, unit_label)
 
         self.render_recent_submissions()
-        self.render_monthly_summary()
-        self.observation("Ensure utility invoices and fuel metering tickets are retained for 7 years to comply with statutory GHG Protocol audit guidelines.", title="Observations & Compliance Guidance")
 
     # ── TAB 2 – Approval Queue ──────────────────────────────────────────────────
     @staticmethod
@@ -269,7 +265,6 @@ class Sustainability(Page):
             st.markdown("""
             <div style='text-align:center;padding:2.5rem;background:var(--ct-ok-bg);
                 border:1px solid var(--ct-ok-border-soft);border-radius:12px;'>
-              <span style='font-size:2.5rem;'>✅</span>
               <p style='color:var(--ct-ok-text);font-weight:700;font-size:1.05rem;margin:0.5rem 0 0;'>All clear! No pending submissions.</p>
               <span style='color:var(--ct-muted);font-size:0.8rem;'>All submitted records have been verified and processed into the carbon ledger.</span>
             </div>""", unsafe_allow_html=True)
@@ -287,8 +282,7 @@ class Sustainability(Page):
             table = history[["id", "date", "facility", "scope", "source", "quantity", "co2e_kg",
                              "submitted_by", "submitted_at", "status", "anomaly_reason"]].copy()
             table["status"] = table["status"].map(STATUS_LABELS).fillna(table["status"])
-            table["co2e_kg"] = table["co2e_kg"].round(2)
-            st.dataframe(table, width="stretch", hide_index=True, height=300)
+            st.dataframe(two_decimals(table, ["quantity", "co2e_kg"]), width="stretch", hide_index=True, height=300)
 
     # ── TAB 3 – Activity Log ────────────────────────────────────────────────────
     @staticmethod

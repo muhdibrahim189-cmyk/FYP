@@ -82,6 +82,14 @@ CARBON_TAX_RATE_MYR = 16.0          # MYR per tonne CO₂e  (Malaysia 2026)
 # --------------- Companies ---------------------------------
 # The companies in Carbon_Emission_Data.xlsx (a test keeps the two in step).
 COMPANIES = ["BP", "Chevron", "ConocoPhillips", "Equinor", "ExxonMobil"]
+# Full names for companies known by an abbreviation (reports print "British Petroleum (BP)").
+COMPANY_FULL_NAMES = {"BP": "British Petroleum"}
+
+
+def company_display_name(company: str) -> str:
+    """'British Petroleum (BP)' for an abbreviation in COMPANY_FULL_NAMES, else the name unchanged."""
+    full = COMPANY_FULL_NAMES.get(company)
+    return f"{full} ({company})" if full else company
 
 # --------------- Intensity Denominator ---------------------
 REVENUE_MYR = 45_000_000   # placeholder annual revenue for intensity calc

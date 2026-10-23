@@ -13,14 +13,18 @@ VALID = {"date": "2024-03-01", "facility": COMPANIES[0], "scope": 1, "source": "
 
 
 class DataManagerTests(unittest.TestCase):
-    """Runs against a throwaway SQLite file so the real ledger is untouched."""
+    """
+    Runs against a throwaway SQLite file so the real ledger is untouched, seeded
+    with the synthetic demo records (no workbook) for a predictable history.
+    """
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         db_path = str(Path(self._tmp.name) / "nested" / "test.db")
-        patcher = mock.patch.object(data_manager, "DB_PATH", db_path)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name, value in (("DB_PATH", db_path), ("CARBON_EMISSION_DATA_PATH", Path(self._tmp.name) / "none.xlsx")):
+            patcher = mock.patch.object(data_manager, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.addCleanup(self._tmp.cleanup)
         data_manager.init_db()
 
@@ -48,6 +52,27 @@ class DataManagerTests(unittest.TestCase):
         march = data_manager.load_database_emissions().query("month == '2024-03' and source == 'Mobile – Diesel'")
         self.assertEqual(march["quantity"].tolist(), [1600])  # the approved entry replaced the first one
         self.assertEqual(data_manager.load_database_emissions("replaced")["quantity"].tolist(), [1500])
+
+    def test_user_can_undo_their_own_entry(self):
+        data_manager.submit_emission({**VALID, "quantity": 1500}, "user")
+        entry_id = int(data_manager.load_database_emissions().query("month == '2024-03'")["id"].iloc[0])
+        self.assertFalse(data_manager.withdraw_submission(entry_id, "manager"))  # not theirs
+        self.assertTrue(data_manager.withdraw_submission(entry_id, "user"))
+        self.assertTrue(data_manager.load_database_emissions().query("month == '2024-03'").empty)
+        self.assertEqual(data_manager.load_database_emissions("withdrawn")["id"].tolist(), [entry_id])
+        self.assertEqual(data_manager.load_activity_log()["action"].iloc[0], "WITHDRAWN")
+        self.assertFalse(data_manager.withdraw_submission(entry_id, "user"))  # already withdrawn
+        # The month is free again, so a corrected entry is not a duplicate.
+        self.assertFalse(data_manager.submit_emission({**VALID, "quantity": 1400}, "user")["anomaly"])
+
+    def test_undoing_a_replacement_brings_back_the_entry_it_replaced(self):
+        data_manager.submit_emission({**VALID, "quantity": 1500}, "user")
+        data_manager.submit_emission({**VALID, "quantity": 1600}, "manager")  # duplicate -> pending
+        data_manager.approve_submission(int(data_manager.load_pending().iloc[0]["id"]), "manager")
+        replacement = data_manager.load_database_emissions().query("month == '2024-03'")
+        self.assertEqual(replacement["quantity"].tolist(), [1600])
+        self.assertTrue(data_manager.withdraw_submission(int(replacement["id"].iloc[0]), "manager"))
+        self.assertEqual(data_manager.load_database_emissions().query("month == '2024-03'")["quantity"].tolist(), [1500])
 
     def test_power_consumption_is_recorded_without_emissions(self):
         before = scope_totals(data_manager.load_database_emissions())
@@ -114,6 +139,21 @@ class DataManagerTests(unittest.TestCase):
                 data_manager.submit_emission({**VALID, "quantity": 1500}, "user")
         # The emission INSERT ran before the failing log write and must be undone.
         self.assertEqual(len(data_manager.load_database_emissions()), before)
+
+
+class WorkbookSeedTests(unittest.TestCase):
+    def test_empty_ledger_is_seeded_with_the_workbook_figures(self):
+        if not data_manager.CARBON_EMISSION_DATA_PATH.exists():
+            self.skipTest("workbook not present")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(data_manager, "DB_PATH", str(Path(tmp) / "test.db")):
+            data_manager.init_db()
+            ledger = data_manager.load_database_emissions()
+        workbook = data_manager.load_emissions()
+        self.assertAlmostEqual(ledger["co2e_kg"].sum(), workbook["co2e_kg"].sum(), delta=1)
+        summary = monthly_ledger_summary(ledger).query("Month == '2026-05' and Company == 'BP'").iloc[0]
+        self.assertAlmostEqual(summary["Scope 1 (t CO₂e)"], 2_780_324, delta=1)  # 2.780324 Mt in the workbook
+        self.assertGreater(summary["Power Consumption (MWh)"], 0)
 
 
 class WorkbookTests(unittest.TestCase):

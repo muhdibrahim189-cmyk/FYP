@@ -145,18 +145,46 @@ def _read_frame(query: str, params: tuple = ()) -> pd.DataFrame:
 
 # ── Schema initialisation ──────────────────────────────────────────────────────
 def init_db() -> None:
-    """Create tables if needed and seed synthetic data into an empty ledger."""
+    """
+    Create tables if needed and seed an empty ledger: from the workbook when
+    present (so data entry adds to the reported figures), otherwise with
+    synthetic demo records.
+    """
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with _connect() as conn:
         for statement in _SCHEMA:
             conn.execute(statement)
         is_empty = conn.execute("SELECT COUNT(*) FROM emissions").fetchone()[0] == 0
         if is_empty:
+            seed = workbook_ledger_records() if CARBON_EMISSION_DATA_PATH.exists() else generate_seed_records()
             placeholders = ",".join("?" * len(EMISSION_COLUMNS))
             conn.executemany(
-                f"INSERT INTO emissions ({', '.join(EMISSION_COLUMNS)}) VALUES ({placeholders})",
-                generate_seed_records(),
+                f"INSERT INTO emissions ({', '.join(EMISSION_COLUMNS)}) VALUES ({placeholders})", seed,
             )
+
+
+def workbook_ledger_records() -> list[tuple]:
+    """
+    The workbook's company-months as ledger rows (EMISSION_COLUMNS): a Scope 1
+    and a Scope 2 total in Mt CO₂e, plus total energy as power consumption in kWh.
+    """
+    workbook = pd.read_excel(CARBON_EMISSION_DATA_PATH, sheet_name=WORKBOOK_SHEET)
+    rows = []
+    for record in workbook.to_dict("records"):
+        month = pd.Timestamp(record["date"])
+        common = dict(date=month.strftime(DATE_FORMAT), facility=str(record["company"]),
+                      submitted_by=WORKBOOK_SOURCE_NAME, submitted_at=month.strftime(TIMESTAMP_FORMAT),
+                      status="approved", approved_by=WORKBOOK_SOURCE_NAME,
+                      approved_at=month.strftime(TIMESTAMP_FORMAT), notes=str(record["data_type"]), is_anomaly=0)
+        entries = [
+            {"scope": scope, "source": source, "unit": "Mt CO2e", "quantity": float(record[column]),
+             "co2e_kg": float(record[column]) * KG_PER_MT}
+            for scope, column, source in WORKBOOK_SCOPE_COLUMNS
+        ]
+        entries.append({"scope": ENERGY_SCOPE, "source": ENERGY_SOURCES[0], "unit": "kWh",
+                        "quantity": float(record["total_energy_consumption_GWh"]) * 1e6, "co2e_kg": 0.0})
+        rows += [tuple({**common, **entry}[column] for column in EMISSION_COLUMNS) for entry in entries]
+    return rows
 
 
 # ── Read helpers ───────────────────────────────────────────────────────────────
@@ -285,7 +313,7 @@ def load_all_pending() -> pd.DataFrame:
 
 def load_activity_log() -> pd.DataFrame:
     return _read_frame(
-        "SELECT * FROM activity_log ORDER BY timestamp DESC LIMIT ?", (ACTIVITY_LOG_LIMIT,)
+        "SELECT * FROM activity_log ORDER BY timestamp DESC, id DESC LIMIT ?", (ACTIVITY_LOG_LIMIT,)
     )
 
 
@@ -412,6 +440,30 @@ def reject_submission(record_id: int, approver: str) -> bool:
             return False
         conn.execute("UPDATE pending_submissions SET status='rejected' WHERE id=?", (record_id,))
         _log(conn, approver, "REJECTED", f"Pending ID={record_id}, source={row['source']}")
+    return True
+
+
+def withdraw_submission(record_id: int, username: str) -> bool:
+    """
+    Undo a user's own approved ledger entry. It is kept with status 'withdrawn'
+    (audit trail) and leaves every total; an entry it had replaced comes back.
+    Returns False if the entry is not this user's approved entry.
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM emissions WHERE id=? AND status='approved' AND submitted_by=?", (record_id, username)
+        ).fetchone()
+        if row is None:
+            return False
+        conn.execute("UPDATE emissions SET status='withdrawn' WHERE id=?", (record_id,))
+        restored = conn.execute(
+            "UPDATE emissions SET status='approved' WHERE id = (SELECT MAX(id) FROM emissions "
+            "WHERE facility=? AND source=? AND substr(date, 1, 7)=? AND status='replaced')",
+            _same_month_key(row),
+        ).rowcount
+        _log(conn, username, "WITHDRAWN",
+             f"ID={record_id}, source={row['source']}, qty={row['quantity']}"
+             + (", restored the entry it had replaced" if restored else ""))
     return True
 
 

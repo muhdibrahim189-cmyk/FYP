@@ -69,7 +69,7 @@ def filter_emissions(
     scopes: Iterable[int] = (),
     sources: Iterable[str] = (),
     facilities: Iterable[str] = (),
-    submitted_by: str | None = None,
+    submitted_by: Iterable[str] = (),
 ) -> pd.DataFrame:
     """
     Apply the optional filters used across pages.
@@ -83,12 +83,11 @@ def filter_emissions(
         start, end = date_range
         day = df["date"].dt.date
         mask &= (day >= start) & (day <= end)
-    for column, selected in (("scope", scopes), ("source", sources), ("facility", facilities)):
+    for column, selected in (("scope", scopes), ("source", sources), ("facility", facilities),
+                             ("submitted_by", submitted_by)):
         selected = list(selected)
         if selected:
             mask &= df[column].isin(selected)
-    if submitted_by is not None:
-        mask &= df["submitted_by"] == submitted_by
     return df[mask]
 
 

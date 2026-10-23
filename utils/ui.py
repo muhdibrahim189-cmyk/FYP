@@ -207,6 +207,10 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
 .st-key-ct_chat_box { height: min(380px, calc(100vh - 300px)) !important; overflow-y: auto !important; }
 .st-key-ct_chat_panel .stButton > button { border-radius: 18px !important; font-size: 0.8rem; text-align: left; }
 
+/* Label above a dropdown filter (Page.checkbox_filter), matching Streamlit's widget labels */
+.ct-filter-label { font-size: 0.875rem; color: var(--ct-text); margin-bottom: 0.25rem; min-height: 1.5rem;
+    display: flex; align-items: center; }
+
 hr { border-color: var(--ct-border) !important; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -229,6 +233,11 @@ def init_app(page_title: str, page_icon: str) -> None:
     st.markdown(f"<style>{FONT_IMPORT}{GLOBAL_CSS}{chat_logo_css}</style>", unsafe_allow_html=True)
     init_db()
     require_login()
+
+
+def two_decimals(table: pd.DataFrame, columns: list[str]) -> "pd.io.formats.style.Styler":
+    """Show ``columns`` with thousands separators and exactly 2 decimal places (values stay numeric)."""
+    return table.style.format("{:,.2f}", subset=columns, na_rep="")
 
 
 # ── Page base class ────────────────────────────────────────────────────────────
@@ -346,10 +355,12 @@ class Page:
     @staticmethod
     def checkbox_filter(label: str, options: list, key: str,
                         format_func: Callable[[object], str] = str,
-                        expanded: bool = False) -> list:
+                        expanded: bool = False, dropdown: bool = False) -> list:
         """
         Online-store style filter: a collapsible section of checkboxes with a
         "Select All" toggle, all ticked by default. Returns the ticked options.
+        ``dropdown`` shows it as a labelled button whose list floats over the
+        page (for a row of filters) instead of an expander that pushes it down.
         """
         all_key = f"{key}_all"
         item_keys = [f"{key}_{option}" for option in options]
@@ -362,10 +373,18 @@ class Page:
             for item_key in item_keys:
                 st.session_state[item_key] = st.session_state[all_key]
 
-        ticked = sum(st.session_state[k] for k in item_keys)
-        # Show the selection while collapsed, e.g. "Facilities (2/5)".
-        title = label if ticked == len(options) else f"{label} ({ticked}/{len(options)})"
-        with st.expander(title, expanded=expanded, key=f"filter_{key}"):
+        ticked = [format_func(o) for o, k in zip(options, item_keys) if st.session_state[k]]
+        if dropdown:
+            # The button shows the selection, e.g. "All", "BP, Chevron" or "3 of 5 selected".
+            summary = ("All" if len(ticked) == len(options) else "None" if not ticked
+                       else ", ".join(ticked) if len(ticked) <= 2 else f"{len(ticked)} of {len(options)} selected")
+            st.markdown(f"<div class='ct-filter-label'>{escape(label)}</div>", unsafe_allow_html=True)
+            container = st.popover(summary, width="stretch", key=f"filter_{key}")
+        else:
+            # Show the selection while collapsed, e.g. "Facilities (2/5)".
+            title = label if len(ticked) == len(options) else f"{label} ({len(ticked)}/{len(options)})"
+            container = st.expander(title, expanded=expanded, key=f"filter_{key}")
+        with container:
             st.checkbox("Select All", key=all_key, on_change=set_all)
             return [
                 option

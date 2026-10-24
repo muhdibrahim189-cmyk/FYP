@@ -91,12 +91,21 @@ SPK pages and charts (use these to explain what a user sees):
   - Carbon Tax Analysis (Bar & Line Chart): monthly carbon tax (bars) and cumulative tax (line) in MYR.
 - What-If Simulator: sliders reduce emission levers; Simulation Results (KPI Cards & Bar Chart)
   and Baseline vs Simulation Comparison (Area Chart) show the effect; AI Scenario Analysis comments on it.
-- Data Centre: every ledger entry (the workbook's reported totals plus data-entry submissions) in a
-  filterable table with CSV export, and below it a Monthly Summary (Table): one row per company and
-  month with Scope 1, Scope 2 and total (t CO₂e) and power consumption (MWh).
+- Data Centre: filters at the top, then two tabs.
+  - Data Table tab: every ledger entry (the workbook's reported totals plus data-entry submissions)
+    in a searchable table, and below it a Monthly Summary (Table): one row per company and month
+    with Scope 1, Scope 2 and total (t CO₂e) and power consumption (MWh).
+  - Export tab: (1) Carbon Tax Statement (Report): pick Company, Year and Period (Annual or
+    Q1–Q4), then click "Download Report (…, PDF)" to get the official PDF statement (company
+    details, monthly emissions with chart and summary, carbon tax invoice). It uses all records,
+    not the page filters. (2) Export Data (CSV): "Download CSV" exports the filtered records with
+    tonnes CO₂e and carbon tax (MYR) per record.
+  - "How do I generate a carbon tax report?" → Data Centre → Export tab → Carbon Tax Statement.
 - Sustainability: data entry form with a live CO₂e estimate (users can undo their own entries),
-  approval queue and audit log.
+  approval queue and audit log (Export Log CSV).
 - Sidebar filters (year, company, scope) change what the dashboard charts show.
+- Only mention buttons, tabs and controls listed above; never invent others. For "how do I…"
+  questions give the numbered steps only, without quoting Page data figures.
 """
 
 
@@ -144,6 +153,7 @@ ANSWER_REMINDER = (
     "Answer rules: ground every company figure in the Page data and speak to the user's filters. "
     "Simple question: 1–3 sentences. Explanation or insight question: bullet points only "
     "(Key finding / What changed / Why / So what), at most 6 one-sentence bullets and 120 words. "
+    "How-to question: numbered steps using only the SPK controls listed, no figures. "
     "Do not present Scope 2 company trend terms as growth rates."
 )
 

@@ -13,7 +13,7 @@ import streamlit as st
 from data.emission_factors import PENINSULAR_GRID_FACTOR
 from utils.ai_helper import chat_response
 from utils.analytics import emissions_snapshot
-from utils.auth import brand_html, render_sidebar_user, require_login
+from utils.auth import brand_html, own_rows, render_sidebar_user, require_login
 from utils.config import (
     APP_PAGE_ICON, APP_SHORT_NAME, CHAT_SUGGESTIONS, CHATBOT_AVATAR, CHATBOT_LOGO_DATA_URI, CHATBOT_NAME,
     NAVIGATION_OPTIONS, PAGE_ROUTES,
@@ -308,7 +308,7 @@ class Page:
         """Send a question with the running history and record both turns."""
         history = st.session_state.setdefault("chat_history", [])  # shown in the panel and sent to the model
         data_context = page_context or (f"PAGE: {page_name} (no page-specific figures; whole dataset below)\n"
-                                        + emissions_snapshot(load_emissions(), load_stirpat_panel()))
+                                        + emissions_snapshot(Page.visible_emissions(), load_stirpat_panel()))
         reply = chat_response(history, question, data_context)
         history += [
             {"role": "user", "content": question},
@@ -381,7 +381,7 @@ class Page:
             st.markdown(f"<div class='ct-filter-label'>{escape(label)}</div>", unsafe_allow_html=True)
             container = st.popover(summary, width="stretch", key=f"filter_{key}")
         else:
-            # Show the selection while collapsed, e.g. "Facilities (2/5)".
+            # Show the selection while collapsed, e.g. "Company (2/5)".
             title = label if len(ticked) == len(options) else f"{label} ({len(ticked)}/{len(options)})"
             container = st.expander(title, expanded=expanded, key=f"filter_{key}")
         with container:
@@ -394,13 +394,27 @@ class Page:
 
     # ── Data ───────────────────────────────────────────────────────────────────
     @staticmethod
-    def load_emissions_or_stop(empty_message: str) -> pd.DataFrame:
-        """Approved emissions; halts the page with a warning when there are none."""
-        df = load_emissions()
+    def visible_emissions() -> pd.DataFrame:
+        """Approved emissions the signed-in user may see (own company, or all)."""
+        return own_rows(load_emissions())
+
+    @staticmethod
+    def stop_if_empty(df: pd.DataFrame, message: str) -> pd.DataFrame:
+        """``df`` unchanged; halts the page with a warning when it has no rows."""
         if df.empty:
-            st.warning(empty_message)
+            st.warning(message)
             st.stop()
         return df
+
+    @staticmethod
+    def require_selection(message: str, *selections: list) -> None:
+        """Halt the page when a filter has nothing ticked (an empty selection would mean "show everything")."""
+        if not all(selections):
+            st.info(message)
+            st.stop()
+
+    def load_emissions_or_stop(self, empty_message: str) -> pd.DataFrame:
+        return self.stop_if_empty(self.visible_emissions(), empty_message)
 
     # ── Content components ─────────────────────────────────────────────────────
     @staticmethod
@@ -444,8 +458,33 @@ class Page:
         )
 
     @staticmethod
-    def muted_text(text: str, size: str = "0.85rem") -> None:
-        st.markdown(f"<div style='color:var(--ct-muted);font-size:{size};'>{text}</div>", unsafe_allow_html=True)
+    def highlight_box(label: str, value: str, caption: str, accent: str, value_size: str = "1.35rem") -> None:
+        """A headline figure in a card with a coloured left edge (``value``/``caption`` are escaped)."""
+        st.markdown(f"""
+        <div style='background:var(--ct-surface);border:1px solid var(--ct-border);border-left:4px solid {accent};
+            border-radius:10px;padding:0.8rem 1.1rem;margin-top:0.4rem;box-shadow:0 1px 3px rgba(0,0,0,0.03);'>
+          <div style='color:{accent};font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'>
+            {escape(label)}
+          </div>
+          <div style='color:var(--ct-heading);font-size:{value_size};font-weight:700;margin-top:0.2rem;
+              font-family:Poppins,sans-serif;'>{escape(value)}</div>
+          <div style='color:var(--ct-muted);font-size:0.75rem;'>{escape(caption)}</div>
+        </div>""", unsafe_allow_html=True)
+
+    @staticmethod
+    def restricted(message: str) -> None:
+        """Shown in place of a feature the user's role may not use."""
+        st.markdown(f"""
+        <div style='text-align:center;padding:3rem;'>
+          <span style='font-size:3rem;'>🔒</span>
+          <h3 style='color:var(--ct-muted);'>Access Restricted</h3>
+          <p style='color:#94a3b8;'>{escape(message)}</p>
+        </div>""", unsafe_allow_html=True)
+
+    @staticmethod
+    def muted_text(text: str, size: str = "0.85rem", align: str = "left") -> None:
+        st.markdown(f"<div style='color:var(--ct-muted);font-size:{size};text-align:{align};'>{text}</div>",
+                    unsafe_allow_html=True)
 
     @staticmethod
     def observation(text: str, title: str = "Observations") -> None:

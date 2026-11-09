@@ -43,6 +43,7 @@ WORKBOOK_DRIVER_COLUMNS = {
 }
 WORKBOOK_REQUIRED_COLUMNS = frozenset({
     "company", "date", "days_in_month", "scope1_mt_co2e", "scope2_location_mt_co2e", "data_type",
+    "total_energy_consumption_GWh",
     *WORKBOOK_DRIVER_COLUMNS.values(),
 })
 _SOURCES_BY_SCOPE = {1: SCOPE1_SOURCES, 2: SCOPE2_SOURCES, ENERGY_SCOPE: ENERGY_SOURCES}
@@ -163,28 +164,36 @@ def init_db() -> None:
             )
 
 
-def workbook_ledger_records() -> list[tuple]:
+def _workbook_entries(workbook: pd.DataFrame) -> list[dict[str, Any]]:
     """
-    The workbook's company-months as ledger rows (EMISSION_COLUMNS): a Scope 1
-    and a Scope 2 total in Mt CO₂e, plus total energy as power consumption in kWh.
+    The workbook's company-months as ledger rows: a Scope 1 and a Scope 2
+    total in Mt CO₂e, plus total energy as power consumption in kWh.
     """
-    workbook = pd.read_excel(CARBON_EMISSION_DATA_PATH, sheet_name=WORKBOOK_SHEET)
     rows = []
     for record in workbook.to_dict("records"):
         month = pd.Timestamp(record["date"])
-        common = dict(date=month.strftime(DATE_FORMAT), facility=str(record["company"]),
-                      submitted_by=WORKBOOK_SOURCE_NAME, submitted_at=month.strftime(TIMESTAMP_FORMAT),
-                      status="approved", approved_by=WORKBOOK_SOURCE_NAME,
-                      approved_at=month.strftime(TIMESTAMP_FORMAT), notes=str(record["data_type"]), is_anomaly=0)
-        entries = [
-            {"scope": scope, "source": source, "unit": "Mt CO2e", "quantity": float(record[column]),
-             "co2e_kg": float(record[column]) * KG_PER_MT}
+        common = dict(date=month, facility=str(record["company"]), submitted_by=WORKBOOK_SOURCE_NAME,
+                      submitted_at=month, status="approved", approved_by=WORKBOOK_SOURCE_NAME,
+                      approved_at=month, notes=str(record["data_type"]), is_anomaly=0)
+        rows += [
+            {**common, "scope": scope, "source": source, "unit": "Mt CO2e", "quantity": float(record[column]),
+             "co2e_kg": float(record[column]) * KG_PER_MT}  # workbook values are Mt CO₂e
             for scope, column, source in WORKBOOK_SCOPE_COLUMNS
         ]
-        entries.append({"scope": ENERGY_SCOPE, "source": ENERGY_SOURCES[0], "unit": "kWh",
-                        "quantity": float(record["total_energy_consumption_GWh"]) * 1e6, "co2e_kg": 0.0})
-        rows += [tuple({**common, **entry}[column] for column in EMISSION_COLUMNS) for entry in entries]
+        rows.append({**common, "scope": ENERGY_SCOPE, "source": ENERGY_SOURCES[0], "unit": "kWh",
+                     "quantity": float(record["total_energy_consumption_GWh"]) * 1e6, "co2e_kg": 0.0})
     return rows
+
+
+def workbook_ledger_records() -> list[tuple]:
+    """The workbook's ledger rows (see _workbook_entries) as EMISSION_COLUMNS tuples for SQLite."""
+    workbook = pd.read_excel(CARBON_EMISSION_DATA_PATH, sheet_name=WORKBOOK_SHEET)
+    formats = {"date": DATE_FORMAT, "submitted_at": TIMESTAMP_FORMAT, "approved_at": TIMESTAMP_FORMAT}
+    return [
+        tuple(row[column].strftime(formats[column]) if column in formats else row[column]
+              for column in EMISSION_COLUMNS)
+        for row in _workbook_entries(workbook)
+    ]
 
 
 # ── Read helpers ───────────────────────────────────────────────────────────────
@@ -207,30 +216,8 @@ def _read_workbook(path: str, modified_ns: int) -> tuple[pd.DataFrame, pd.DataFr
             f"{CARBON_EMISSION_DATA_PATH.name} is missing required columns: " + ", ".join(missing)
         )
 
-    rows = []
-    for record in workbook.to_dict("records"):
-        period = pd.Timestamp(record["date"])
-        common = {
-            "date": period,
-            "facility": str(record["company"]),
-            "unit": "Mt CO2e",
-            "submitted_by": WORKBOOK_SOURCE_NAME,
-            "submitted_at": period,
-            "status": "approved",
-            "approved_by": WORKBOOK_SOURCE_NAME,
-            "approved_at": period,
-            "notes": str(record["data_type"]),
-            "is_anomaly": 0,
-        }
-        for scope, column, source in WORKBOOK_SCOPE_COLUMNS:
-            rows.append({
-                **common,
-                "scope": scope,
-                "source": source,
-                "quantity": float(record[column]),
-                "co2e_kg": float(record[column]) * KG_PER_MT,  # workbook values are Mt CO₂e
-            })
-
+    # The analytics pages work on CO₂e only, so power consumption rows stay in the SQLite ledger.
+    rows = [row for row in _workbook_entries(workbook) if row["scope"] != ENERGY_SCOPE]
     df = pd.DataFrame(rows)
     df["id"] = range(1, len(df) + 1)
     df = _add_derived_columns(df)

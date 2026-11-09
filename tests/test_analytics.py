@@ -111,10 +111,13 @@ class DashboardContextTests(unittest.TestCase):
 class SnapshotTests(unittest.TestCase):
     def test_summarises_years_companies_and_forecasts_in_mt(self):
         df = make_records().assign(co2e_kg=lambda f: f["co2e_kg"] * 1e9)  # 1,000–4,000 Mt
-        text = emissions_snapshot(df, make_stirpat_panel())
+        panel = make_stirpat_panel().replace({"company": {"A Co": "HQ", "B Co": "Plant"}})
+        text = emissions_snapshot(df, panel)
         self.assertIn("2024: S1 4000.00, S2 2000.00", text)
         self.assertIn("By company in 2025 (Mt CO₂e): Plant: S1 0.00, S2 4000.00", text)
         self.assertIn("STIRPAT Total forecast", text)
+        # Forecasts cover only the companies in df (a company user's own), never others in the panel.
+        self.assertNotIn("STIRPAT", emissions_snapshot(df, make_stirpat_panel()))
 
     def test_empty_data(self):
         self.assertEqual(emissions_snapshot(pd.DataFrame(), pd.DataFrame()), "No emission data is loaded.")

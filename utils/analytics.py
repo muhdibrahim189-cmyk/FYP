@@ -271,8 +271,9 @@ def emissions_snapshot(df: pd.DataFrame, panel: pd.DataFrame) -> str:
                                                           values="co2e_kg", aggfunc="sum") / KG_PER_MT)
     lines.append(f"By company in {latest} (Mt CO₂e): " + "; ".join(
         f"{name}: S1 {row.get(1, 0):.2f}, S2 {row.get(2, 0):.2f}" for name, row in company.iterrows()))
-    if not panel.empty:
-        companies = panel["company"].unique()
+    # The model is fitted on every company; totals cover only the companies in ``df``.
+    companies = [c for c in df["facility"].unique() if not panel.empty and c in set(panel["company"])]
+    if companies:
         for target, label in (("S1", "Scope 1"), ("S2", "Scope 2"), ("I", "Total")):
             result = stirpat_forecast(panel, companies, target=target)
             if result is not None:
@@ -398,7 +399,7 @@ def detect_anomaly(history: Sequence[float], value: float, source: str,
     direction = "high" if value > mean else "low"
     reason = (
         f"Value {value:,.1f} {unit} is {z:.1f}σ {direction} of historical mean "
-        f"({mean:,.1f} ± {std:,.1f} {unit}) for '{source}'. Requires manager approval."
+        f"({mean:,.1f} ± {std:,.1f} {unit}) for '{source}'. Requires approval."
     )
     return True, reason
 

@@ -1,12 +1,19 @@
 """
 auth.py – Session-based authentication and role management.
-Three demo roles: admin, manager, data_entry
+Three demo roles:
+  * admin      – developer / IT team: every company and every feature.
+  * government – regulator: monitors every company and issues carbon tax
+                 statements, but cannot enter or approve data or read the audit log.
+  * company    – one account per company: sees only its own company's data,
+                 enters it and verifies flagged entries (approval queue).
 """
 import hmac
 import logging
 
+import pandas as pd
 import streamlit as st
 
+from data.emission_factors import COMPANIES
 from utils.config import APP_LOGO_DATA_URI, APP_NAME, APP_SHORT_NAME
 from utils.data_manager import log_action
 
@@ -21,29 +28,35 @@ USERS = {
         "role":     "admin",
         "name":     "Ahmad Faris",
     },
-    "manager": {
-        "password": "mgr123",
-        "role":     "manager",
-        "name":     "Nurul Ain",
-    },
     "user": {
         "password": "user123",
-        "role":     "data_entry",
+        "role":     "government",
         "name":     "Haziq Rahman",
+    },
+    # One account per company, e.g. bp / bp123.
+    **{
+        company.lower(): {
+            "password": f"{company.lower()}123",
+            "role":     "company",
+            "name":     f"{company} Carbon Officer",
+            "company":  company,
+        }
+        for company in COMPANIES
     },
 }
 
 ROLE_LABELS = {
-    "admin":      "Administrator",
-    "manager":    "Manager",
-    "data_entry": "Data Entry Officer",
+    "admin":      "Administrator (IT)",
+    "government": "Government Officer",
+    "company":    "Company User",
 }
 
 # ── Permission matrix ──────────────────────────────────────────────────────────
+# Every role may export the data it can see (CSV), so export needs no permission.
 PERMISSIONS = {
-    "admin":      ["view", "submit", "approve", "reject", "delete", "export"],
-    "manager":    ["view", "submit", "approve", "reject", "export"],
-    "data_entry": ["view", "submit", "export"],
+    "admin":      ["all_companies", "submit", "approve", "report", "audit_log"],
+    "government": ["all_companies", "report"],
+    "company":    ["submit", "approve"],
 }
 
 _SESSION_DEFAULTS = {
@@ -67,6 +80,18 @@ def role_has_permission(role: str | None, action: str) -> bool:
     return action in PERMISSIONS.get(role, [])
 
 
+def visible_rows(df: pd.DataFrame, user: dict | None, column: str = "facility") -> pd.DataFrame:
+    """
+    The rows of ``df`` that ``user`` may see: everything for roles with
+    "all_companies", otherwise only their own company's rows (none when they
+    have no company, so an unknown user sees nothing).
+    """
+    user = user or {}
+    if df.empty or role_has_permission(user.get("role"), "all_companies"):
+        return df
+    return df[df[column] == user.get("company")]
+
+
 # ── Session management ─────────────────────────────────────────────────────────
 def init_session() -> None:
     """Initialise auth-related session keys."""
@@ -88,11 +113,11 @@ def login(username: str, password: str) -> bool:
 
 
 def logout() -> None:
-    """Clear auth session."""
+    """Clear the whole session, so the next user on this browser inherits no data (chat, filters)."""
     if st.session_state.get("username"):
         _audit(st.session_state.username, "LOGOUT", "User signed out")
-    for key, default in _SESSION_DEFAULTS.items():
-        st.session_state[key] = default
+    st.session_state.clear()
+    init_session()
 
 
 def _audit(username: str, action: str, details: str) -> None:
@@ -123,6 +148,11 @@ def current_user() -> dict:
 
 def current_username() -> str:
     return st.session_state.get("username") or ""
+
+
+def own_rows(df: pd.DataFrame, column: str = "facility") -> pd.DataFrame:
+    """``df`` limited to what the signed-in user may see (see visible_rows)."""
+    return visible_rows(df, current_user(), column)
 
 
 def render_sidebar_user() -> None:
@@ -169,7 +199,7 @@ def _render_login_page() -> None:
             unsafe_allow_html=True,
         )
         with st.form("login_form"):
-            username = st.text_input("Username", placeholder="admin / manager / user")
+            username = st.text_input("Username", placeholder="admin / user / bp …")
             password = st.text_input("Password", type="password", placeholder="••••••••")
             submitted = st.form_submit_button("Sign In", width="stretch", type="primary")
             if submitted:
@@ -178,13 +208,14 @@ def _render_login_page() -> None:
                 else:
                     st.error("❌ Invalid username or password.")
 
+        code_style = "background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);"
+        accounts = " &nbsp;|&nbsp; ".join(
+            f"<code style='{code_style}'>{username} / {user['password']}</code>" for username, user in USERS.items()
+        )
         st.markdown(
-            """
-            <div style='text-align:center;margin-top:1.5rem;color:var(--ct-muted);font-size:0.78rem;'>
-            Demo credentials: &nbsp;
-            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>admin / admin123</code> &nbsp;|&nbsp;
-            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>manager / mgr123</code> &nbsp;|&nbsp;
-            <code style='background:var(--ct-border);padding:2px 6px;border-radius:4px;color:var(--ct-text);'>user / user123</code>
+            f"""
+            <div style='text-align:center;margin-top:1.5rem;color:var(--ct-muted);font-size:0.78rem;line-height:2;'>
+            Demo credentials (admin = IT, user = government, others = one per company):<br>{accounts}
             </div>
             """,
             unsafe_allow_html=True,

@@ -17,8 +17,9 @@ from data.emission_factors import (
     ALL_FACTORS, COMPANIES, ENERGY_SCOPE, ENERGY_SOURCES, SCOPE1_SOURCES, SCOPE2_SOURCES, UNIT_NAMES,
 )
 from utils.analytics import search_rows, to_safe_csv
-from utils.auth import current_username, has_permission
+from utils.auth import current_user, current_username, has_permission, own_rows
 from utils.carbon_calculator import carbon_tax, kg_to_tonnes
+from utils.charts import BLUE
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
 from utils.data_manager import (
     approve_submission, load_activity_log, load_all_pending, load_database_emissions,
@@ -54,17 +55,10 @@ class Sustainability(Page):
     def render(self) -> None:
         self.username = current_username()
         self.can_approve = has_permission("approve")
-        self.pending_records = load_pending()
+        self.pending_records = own_rows(load_pending())
         if not self.pending_records.empty and self.can_approve:
-            st.markdown(f"""
-            <div style='background:var(--ct-warn-bg);border:1px solid var(--ct-warn-border);border-left:4px solid #ca8a04;
-                border-radius:10px;padding:0.75rem 1.1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.8rem;'>
-              <span style='font-size:1.3rem;'>⚠️</span>
-              <div>
-                <span style='color:var(--ct-warn-text);font-weight:700;'>{len(self.pending_records)} submission(s) awaiting your approval</span>
-                <div style='color:var(--ct-warn-text-soft);font-size:0.8rem;'>Review and authorize or reject flagged entries in the Approval Queue tab below.</div>
-              </div>
-            </div>""", unsafe_allow_html=True)
+            st.warning(f"**{len(self.pending_records)} submission(s) awaiting your approval**  \n"
+                       "Review and authorize or reject flagged entries in the Approval Queue tab below.", icon="⚠️")
 
         tab_entry, tab_approval, tab_log = st.tabs(["Data Entry", "Approval Queue", "Activity Log"])
         with tab_entry:
@@ -75,17 +69,6 @@ class Sustainability(Page):
             self.render_log_tab()
 
     # ── TAB 1 – Data Entry ──────────────────────────────────────────────────────
-    @staticmethod
-    def render_co2e_preview(co2e_kg: float) -> None:
-        st.markdown(f"""
-        <div style='background:var(--ct-surface-alt);border:1px solid var(--ct-border);border-left:4px solid #2563EB;
-            border-radius:8px;padding:0.7rem 0.9rem;margin-top:0.25rem;box-shadow:0 1px 2px rgba(0,0,0,0.02);'>
-          <div style='color:var(--ct-muted);font-size:0.72rem;font-weight:600;text-transform:uppercase;'>Estimated CO₂e Calculation</div>
-          <div style='color:var(--ct-heading);font-size:1.35rem;font-weight:700;font-family:Poppins,sans-serif;'>{co2e_kg:,.2f} kg</div>
-          <div style='color:var(--ct-muted);font-size:0.75rem;'>{kg_to_tonnes(co2e_kg):,.2f} tonnes ·
-            Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}</div>
-        </div>""", unsafe_allow_html=True)
-
     def handle_submission(self, data: dict, unit_label: str) -> None:
         try:
             result = submit_emission(data, self.username)
@@ -101,11 +84,11 @@ class Sustainability(Page):
             st.warning(f"""
             ⚠️ **Anomaly Detected — Submission Sent for Approval**
 
-            Your submission has been flagged and is pending manager approval.
+            Your submission has been flagged and is pending approval.
 
             **Reason:** {result['reason']}
 
-            The record will be reviewed and approved/rejected by a manager before being recorded.
+            Review it in the Approval Queue tab: it is recorded only once approved.
             """)
         elif data["scope"] == ENERGY_SCOPE:
             st.success(f"✅ **Power consumption recorded:** {data['quantity']:,.2f} {unit_label} "
@@ -145,17 +128,17 @@ class Sustainability(Page):
             st.error("❌ That entry could not be undone (it may already have been withdrawn).")
 
     def render_entry_tab(self) -> None:
+        if not has_permission("submit"):
+            self.restricted("Emission data is entered by each company (and the IT team).")
+            return
         self.section_title("📝 Submit New Emission Record")
         st.write(
-            "Standardized GHG emission logging interface. Submissions are dynamically benchmarked against facility baselines. "
-            "Inputs deviating significantly from historical distributions are intercepted for managerial verification."
+            "Standardized GHG emission logging interface. Submissions are dynamically benchmarked against historical baselines. "
+            "Inputs deviating significantly from historical distributions are held for verification in the Approval Queue."
         )
-        st.markdown("""
-        <div style='background:var(--ct-info-bg);border:1px solid var(--ct-info-border);border-left:4px solid #2563EB;
-            border-radius:10px;padding:0.85rem 1.1rem;margin-bottom:1.2rem;color:var(--ct-text-body);font-size:0.84rem;'>
-        ℹ️ <strong>Validation Protocol:</strong> All entries are automatically scored against historical standard deviations.
-        Outlier quantities will be <strong style='color:var(--ct-alert-text);'>flagged as potential anomalies</strong> and routed to an authorized supervisor for audit sign-off.
-        </div>""", unsafe_allow_html=True)
+        st.info("**Validation Protocol:** All entries are automatically scored against historical standard deviations. "
+                "Outlier quantities will be **flagged as potential anomalies** and routed to the Approval Queue "
+                "for sign-off.", icon="ℹ️")
 
         # Not wrapped in st.form: the source list and CO₂e preview must react to
         # the scope/source/quantity choices as they change.
@@ -164,7 +147,9 @@ class Sustainability(Page):
             entry_date = st.date_input("Activity Date", value=date.today(), max_value=date.today(), key="entry_date",
                                        help="One entry per source per company per month; a second one for the "
                                             "same month is flagged as a duplicate.")
-            facility = st.selectbox("Company", COMPANIES, key="entry_facility")
+            # A company user can only enter data for their own company.
+            own_company = current_user().get("company")
+            facility = st.selectbox("Company", [own_company] if own_company else COMPANIES, key="entry_facility")
             scope_choice = st.radio("Entry Type", list(ENTRY_TYPES), horizontal=True, key="entry_scope",
                                     format_func=lambda x: ENTRY_TYPES[x][0])
         with col2:
@@ -177,7 +162,9 @@ class Sustainability(Page):
                 st.info("Activity data: no CO₂e of its own. It is the energy behind the STIRPAT "
                         "energy-intensity driver (T = energy ÷ production).")
             else:
-                self.render_co2e_preview(quantity * ALL_FACTORS[source]["factor"])
+                co2e_kg = quantity * ALL_FACTORS[source]["factor"]
+                self.highlight_box("Estimated CO₂e Calculation", f"{co2e_kg:,.2f} kg",
+                                   f"{kg_to_tonnes(co2e_kg):,.2f} tonnes · Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}", BLUE)
 
         notes = st.text_area("Notes (optional)", placeholder="Add any relevant context…", height=80, key="entry_notes")
 
@@ -247,37 +234,27 @@ class Sustainability(Page):
                 st.rerun()
 
     def render_approval_tab(self) -> None:
-        if not self.can_approve:
-            st.markdown("""
-            <div style='text-align:center;padding:3rem;'>
-              <span style='font-size:3rem;'>🔒</span>
-              <h3 style='color:var(--ct-muted);'>Access Restricted</h3>
-              <p style='color:#94a3b8;'>Only managers and administrators can approve submissions.</p>
-            </div>""", unsafe_allow_html=True)
-            return
-
         self.section_title("⏳ Pending Submissions Requiring Authorization")
         st.write(
             "Review transactions flagged by the automated outlier detection filter. "
             "Examine reported volumes against operational logs prior to approving or rejecting."
         )
+        if not self.can_approve:
+            self.muted_text("View only: each company verifies its own flagged entries.")
         if self.pending_records.empty:
-            st.markdown("""
-            <div style='text-align:center;padding:2.5rem;background:var(--ct-ok-bg);
-                border:1px solid var(--ct-ok-border-soft);border-radius:12px;'>
-              <p style='color:var(--ct-ok-text);font-weight:700;font-size:1.05rem;margin:0.5rem 0 0;'>All clear! No pending submissions.</p>
-              <span style='color:var(--ct-muted);font-size:0.8rem;'>All submitted records have been verified and processed into the carbon ledger.</span>
-            </div>""", unsafe_allow_html=True)
+            st.success("**All clear! No pending submissions.**  \n"
+                       "All submitted records have been verified and processed into the carbon ledger.")
         else:
             for _, row in self.pending_records.iterrows():
                 self.render_pending_card(row)
-                self.render_pending_actions(int(row["id"]))
+                if self.can_approve:
+                    self.render_pending_actions(int(row["id"]))
                 st.markdown("<hr>", unsafe_allow_html=True)
 
         self.observation("Approved entries immediately impact the official corporate ESG reporting totals and tax estimations.", title="Observations & Protocol")
 
         self.section_title("📋 Submission History – All Records (Table)")
-        history = load_all_pending()
+        history = own_rows(load_all_pending())
         if not history.empty:
             table = history[["id", "date", "facility", "scope", "source", "quantity", "co2e_kg",
                              "submitted_by", "submitted_at", "status", "anomaly_reason"]].copy()
@@ -297,6 +274,9 @@ class Sustainability(Page):
         </div>""", unsafe_allow_html=True)
 
     def render_log_tab(self) -> None:
+        if not has_permission("audit_log"):
+            self.restricted("The activity and audit log is managed by the IT team.")
+            return
         self.section_title("📜 Activity & Audit Log")
         st.write(
             "Complete, immutable audit trail documenting all user actions, authentication events, "
@@ -326,8 +306,7 @@ class Sustainability(Page):
             shown = filtered.head(ACTIVITY_LOG_DISPLAY_LIMIT)
             for _, row in shown.iterrows():
                 self.render_log_row(row)
-            st.markdown(f"<div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;margin-top:0.5rem;'>"
-                        f"Showing {len(shown)} of {len(filtered)} log entries</div>", unsafe_allow_html=True)
+            self.muted_text(f"Showing {len(shown)} of {len(filtered)} log entries", size="0.75rem", align="right")
 
             st.download_button(
                 "⬇️ Export Log CSV", to_safe_csv(filtered),

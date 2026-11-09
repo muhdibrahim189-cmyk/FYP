@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from data.emission_factors import ALL_FACTORS
+from utils.data_manager import WORKBOOK_SCOPE_COLUMNS
 from utils.simulation import (
     ALL_LEVERS, LEVER_SOURCES, describe_changes, reduction_fractions, simulate_emissions,
 )
@@ -29,7 +30,8 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result.tolist(), [50.0, 100.0, 120.0, 50.0])
 
     def test_workbook_scope_totals_share_their_scope_levers(self):
-        workbook = pd.DataFrame({"source": ["Scope 1", "Scope 2 (location-based)"], "co2e_kg": [1000.0, 300.0]})
+        sources = [source for _, _, source in WORKBOOK_SCOPE_COLUMNS]  # the loader's names, so they can't drift
+        workbook = pd.DataFrame({"source": sources, "co2e_kg": [1000.0, 300.0]})
         # Diesel is 1 of 5 Scope 1 levers; electricity is 1 of 3 Scope 2 levers.
         result = simulate_emissions(workbook, {"d_red": 100, "e_red": 90})
         self.assertEqual(result.tolist(), [800.0, 210.0])

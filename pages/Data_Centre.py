@@ -11,6 +11,7 @@ import streamlit as st
 
 from data.emission_factors import CARBON_TAX_RATE_MYR, ENERGY_SCOPE, company_display_name
 from utils.analytics import filter_emissions, monthly_ledger_summary, scope_totals, search_rows, to_safe_csv
+from utils.auth import has_permission, own_rows
 from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, carbon_tax, share_pct
 from utils.charts import AMBER, BLUE, HEADING, RED
 from utils.config import DATA_TABLE_PAGE_SIZE, STATUS_LABELS
@@ -21,7 +22,7 @@ from utils.ui import Page, two_decimals
 PAGE_KEY = "dc_page"
 SCOPE_LABELS = {1: "Scope 1", 2: "Scope 2", ENERGY_SCOPE: "Power Consumption"}
 DISPLAY_COLUMNS = {
-    "id": "ID", "date": "Date", "facility": "Facility",
+    "id": "ID", "date": "Date", "facility": "Company",
     "scope": "Scope", "source": "Source", "unit": "Unit",
     "quantity": "Quantity", "co2e_kg": "CO₂e (t)",
     "submitted_by": "Submitted By", "submitted_at": "Submitted At",
@@ -45,10 +46,7 @@ class DataCentre(Page):
     )
 
     def render(self) -> None:
-        self.df_raw = load_database_emissions()
-        if self.df_raw.empty:
-            st.warning("No data found in the database.")
-            st.stop()
+        self.df_raw = self.stop_if_empty(own_rows(load_database_emissions()), "No data found in the database.")
         self.df = self.render_filters()
         self.render_stats()
 
@@ -82,10 +80,8 @@ class DataCentre(Page):
             user_filter = self.checkbox_filter("Submitted By", sorted(df_raw["submitted_by"].unique()), "dc_user",
                                                dropdown=True)
 
-        # An empty selection would otherwise mean "no filter" and show everything.
-        if not (scope_filter and source_filter and facility_filter and user_filter):
-            st.info("Tick at least one option in every filter to see records.")
-            st.stop()
+        self.require_selection("Tick at least one option in every filter to see records.",
+                               scope_filter, source_filter, facility_filter, user_filter)
         return filter_emissions(
             df_raw,
             # While the user is still picking the end date the widget returns one date.
@@ -122,7 +118,7 @@ class DataCentre(Page):
         return table
 
     def render_data_tab(self) -> None:
-        search = st.text_input("Search records (source, facility, submitted by…)", "", key="dc_search")
+        search = st.text_input("Search records (source, company, submitted by…)", "", key="dc_search")
         table = self.build_display_table(search_rows(self.df, search))
         self.muted_text(f"Showing {len(table):,} of {len(self.df_raw):,} records", size="0.78rem")
 
@@ -135,8 +131,7 @@ class DataCentre(Page):
         start = (page - 1) * DATA_TABLE_PAGE_SIZE
         rows = table.iloc[start:start + DATA_TABLE_PAGE_SIZE].reset_index(drop=True)
         st.dataframe(two_decimals(rows, ["Quantity", "CO₂e (t)"]), width="stretch", height=450)
-        st.markdown(f"<div style='color:var(--ct-muted);font-size:0.75rem;text-align:right;'>Page {page} of {total_pages}</div>",
-                    unsafe_allow_html=True)
+        self.muted_text(f"Page {page} of {total_pages}", size="0.75rem", align="right")
         self.observation("Use column headers to sort tabular data. All records are verifiable against audit log events.")
         self.render_monthly_summary()
 
@@ -161,7 +156,8 @@ class DataCentre(Page):
         return export[[c for c in EXPORT_COLUMNS if c in export.columns]]
 
     def render_export_tab(self) -> None:
-        self.render_report_export()
+        if has_permission("report"):  # statements are issued by the government, not by companies
+            self.render_report_export()
 
         self.section_title("Export Data (CSV)")
         self.muted_text("Download the filtered dataset for offline analysis, reporting, or audit purposes.")

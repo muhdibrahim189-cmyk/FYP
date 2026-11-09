@@ -20,7 +20,7 @@ from utils.charts import (
     AMBER, BLUE, GREEN, HEADING, HOVER_FORMAT, RED, SCOPE_COLORS, apply_layout,
 )
 from utils.config import FORECAST_MONTHS, STIRPAT_TRAIN_SHARE
-from utils.data_manager import load_emissions, load_stirpat_panel
+from utils.data_manager import load_stirpat_panel
 from utils.ui import Page
 
 SCOPE_FILL_COLORS = {1: "rgba(217,119,6,0.06)", 2: "rgba(37,99,235,0.06)"}
@@ -43,40 +43,35 @@ class MainDashboard(Page):
 
     # ── Sidebar filters ────────────────────────────────────────────────────────
     def sidebar(self) -> None:
-        df_all = self.df_all = load_emissions()
+        df_all = self.df_all = self.visible_emissions()
         st.markdown("### ⚙️ Filters")
 
         years = sorted(df_all["date"].dt.year.unique(), reverse=True) if not df_all.empty else []
         self.sel_years = self.checkbox_filter("Year", years, key="dash_year", expanded=True)
         facilities = sorted(df_all["facility"].unique()) if not df_all.empty else []
-        self.sel_fac = self.checkbox_filter("Facilities", facilities, key="dash_fac")
+        self.sel_fac = self.checkbox_filter("Company", facilities, key="dash_fac")
         self.scope_opts = self.checkbox_filter("Scope", [1, 2], key="dash_scope",
                                                format_func=lambda s: f"Scope {s}")
         self.tax_rate = st.number_input("💰 Carbon Tax (MYR/t)", min_value=0.0,
                                         value=float(CARBON_TAX_RATE_MYR), step=1.0)
 
     def render(self) -> None:
-        # An empty selection would otherwise mean "no filter" and show everything.
-        if not self.df_all.empty and not (self.sel_years and self.sel_fac and self.scope_opts):
-            st.info("Tick at least one year, facility and scope in the sidebar to see data.")
-            st.stop()
-        df = self.df = self.df_all if self.df_all.empty else filter_emissions(
-            self.df_all,
-            years=self.sel_years,
-            facilities=self.sel_fac,
-            scopes=self.scope_opts,
+        no_data = "No data available for the selected filters."
+        self.stop_if_empty(self.df_all, no_data)
+        self.require_selection("Tick at least one year, company and scope in the sidebar to see data.",
+                               self.sel_years, self.sel_fac, self.scope_opts)
+        self.df = self.stop_if_empty(
+            filter_emissions(self.df_all, years=self.sel_years, facilities=self.sel_fac, scopes=self.scope_opts),
+            no_data,
         )
-        if df.empty:
-            st.warning("No data available for the selected filters.")
-            st.stop()
 
         self.render_kpis()
 
         # One scrolling page: every chart section follows the previous one.
-        self.monthly = monthly_summary(df)
+        self.monthly = monthly_summary(self.df)
         self.section_title("📉 Monthly Trend & STIRPAT Forecast (Line Chart)")
         self.render_trend_section()
-        self.section_title("🏭 Facility Heatmap & Trellis (Bar Chart & Heatmap)")
+        self.section_title("🏭 Company Heatmap & Trellis (Bar Chart & Heatmap)")
         self.render_facility_section()
         self.section_title("💰 Carbon Tax Analysis (Bar & Line Chart)")
         self.render_tax_section()
@@ -167,6 +162,8 @@ class MainDashboard(Page):
                                      line=dict(color=TOTAL_COLOR, width=2.5), mode="lines"))
 
         # One model per selected scope, plus the total when both scopes are shown.
+        # Fitted on every company (pooled), but totals cover only self.sel_fac,
+        # which a company user can only pick from their own company.
         panel = load_stirpat_panel()
         results = self.forecasts = {}
         for target, label, color, scopes in STIRPAT_TARGETS:
@@ -239,7 +236,7 @@ class MainDashboard(Page):
 
     def render_facility_section(self) -> None:
         st.write(
-            "Multi-dimensional facility comparison: horizontal rankings display aggregate site burdens, "
+            "Multi-dimensional company comparison: horizontal rankings display aggregate company burdens, "
             "while the monthly matrix heatmap pinpoints temporal intensity variations across operations."
         )
         fac = facility_summary(self.df)
@@ -247,7 +244,7 @@ class MainDashboard(Page):
         fig_bar = px.bar(
             fac_total, x="co2e_mt", y="facility", orientation="h",
             color="co2e_mt", color_continuous_scale=px.colors.sequential.Blues,
-            title="Total CO₂e by Facility (Mt)",
+            title="Total CO₂e by Company (Mt)",
             labels={"co2e_mt": "Mt CO₂e", "facility": ""},
         )
         apply_layout(fig_bar, 360, coloraxis_showscale=False)
@@ -257,12 +254,13 @@ class MainDashboard(Page):
         fac_pivot = fac.pivot_table(index="facility", columns="month", values="co2e_mt", fill_value=0)
         fig_heat = px.imshow(
             fac_pivot, color_continuous_scale=px.colors.sequential.Blues,
-            title="Emission Heatmap: Facility × Month (Mt CO₂e)", aspect="auto",
+            title="Emission Heatmap: Company × Month (Mt CO₂e)", aspect="auto",
+            labels={"y": "Company", "x": "Month", "color": "Mt CO₂e"},
         )
         apply_layout(fig_heat, 320)
         fig_heat.update_traces(hovertemplate=f"%{{y}} · %{{x}}<br>%{{z:{HOVER_FORMAT}}} Mt CO₂e<extra></extra>")
         st.plotly_chart(fig_heat, width="stretch")
-        self.observation("Darker blue cells indicate higher output. Monitor sites with sudden spikes across consecutive months.")
+        self.observation("Darker blue cells indicate higher output. Monitor companies with sudden spikes across consecutive months.")
 
     def render_tax_section(self) -> None:
         st.write(
@@ -288,15 +286,9 @@ class MainDashboard(Page):
         fig.update_yaxes(title_text="Cumulative MYR", secondary_y=True)
         st.plotly_chart(fig, width="stretch")
 
-        st.markdown(f"""
-        <div style='background:var(--ct-surface);border:1px solid var(--ct-danger-border);border-left:4px solid #dc2626;
-            border-radius:10px;padding:1rem 1.4rem;margin-top:0.5rem;box-shadow:0 1px 3px rgba(0,0,0,0.03);'>
-          <div style='color:#dc2626;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'>
-            Total Estimated Carbon Tax Liability
-          </div>
-          <div style='color:var(--ct-heading);font-size:1.8rem;font-weight:700;margin-top:0.2rem;font-family:Poppins,sans-serif;'>MYR {monthly_total['tax_myr'].sum():,.2f}</div>
-          <div style='color:var(--ct-muted);font-size:0.75rem;'>Based on filtered period · Statutory reference rate: MYR {tax_rate:.0f} / tonne CO₂e</div>
-        </div>""", unsafe_allow_html=True)
+        self.highlight_box("Total Estimated Carbon Tax Liability", f"MYR {monthly_total['tax_myr'].sum():,.2f}",
+                           f"Based on filtered period · Statutory reference rate: MYR {tax_rate:.0f} / tonne CO₂e",
+                           RED, value_size="1.8rem")
         self.observation("Financial liability scales linearly with tonnage. Early decarbonization initiatives directly mitigate bottom-line tax risks.")
 
 

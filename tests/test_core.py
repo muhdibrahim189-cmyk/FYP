@@ -21,7 +21,7 @@ class CarbonCalculatorTests(unittest.TestCase):
                 calculate_emission("Mobile – Diesel", quantity)
 
     def test_carbon_tax_uses_tonnes(self):
-        self.assertEqual(carbon_tax(1000), 16.0)
+        self.assertEqual(carbon_tax(1000), 15.0)  # 1 t at the default RM 15/t
 
     def test_carbon_tax_accepts_custom_rate(self):
         self.assertEqual(carbon_tax(2000, rate_myr=10), 20.0)

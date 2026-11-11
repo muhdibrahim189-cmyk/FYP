@@ -77,7 +77,7 @@ SCOPE2_SOURCES = list(SCOPE2_FACTORS.keys())
 ENERGY_SOURCES = list(ENERGY_FACTORS.keys())
 
 # --------------- Carbon Tax / Price -------------------------
-CARBON_TAX_RATE_MYR = 16.0          # MYR per tonne CO₂e  (Malaysia 2026)
+CARBON_TAX_RATE_MYR = 15.0          # MYR per tonne CO₂e  (Malaysia 2026)
 
 # --------------- Companies ---------------------------------
 # The companies in Carbon_Emission_Data.xlsx (a test keeps the two in step).

@@ -115,17 +115,24 @@ class Sustainability(Page):
                         "submitted_at"]].reset_index(drop=True)
         table["status"] = table["status"].map(SUBMISSION_STATUS_ICONS).fillna("?")
         self.muted_text("Submitted something by mistake? Select its row, then click Undo.")
+        # A new key after each undo clears the selection, so the next row is not selected for undo.
         event = st.dataframe(two_decimals(table, ["quantity", "co2e_kg"]), width="stretch", hide_index=True,
-                             on_select="rerun", selection_mode="single-row", key="recent_submissions")
+                             on_select="rerun", selection_mode="single-row",
+                             key=f"recent_submissions_{st.session_state.get('undo_count', 0)}")
         if not event.selection.rows:
             return
         row = table.iloc[event.selection.rows[0]]
-        if st.button(f"↩️ Undo entry #{row['id']}: {row['source']}, {row['facility']} {row['date']:%Y-%m-%d} "
-                     f"({row['quantity']:,.2f})", key="undo_submission"):
-            if withdraw_submission(int(row["id"]), self.username):
-                st.toast(f"Entry #{row['id']} withdrawn. It no longer counts in any total.", icon="↩️")
-                st.rerun()
-            st.error("❌ That entry could not be undone (it may already have been withdrawn).")
+        st.button(f"↩️ Undo entry #{row['id']}: {row['source']}, {row['facility']} {row['date']:%Y-%m-%d} "
+                  f"({row['quantity']:,.2f})", key="undo_submission",
+                  on_click=self.undo_submission, args=(int(row["id"]),))
+
+    def undo_submission(self, record_id: int) -> None:
+        """Button callback: runs before the rerun, so its toast is not lost."""
+        if withdraw_submission(record_id, self.username):
+            st.session_state["undo_count"] = st.session_state.get("undo_count", 0) + 1
+            st.toast(f"Entry #{record_id} withdrawn. It no longer counts in any total.", icon="↩️")
+        else:
+            st.toast("That entry could not be undone (it may already have been withdrawn).", icon="❌")
 
     def render_entry_tab(self) -> None:
         if not has_permission("submit"):

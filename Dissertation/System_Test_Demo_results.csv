@@ -1,0 +1,57 @@
+﻿Test ID,Test criteria,Account,Expected result,Result,Observed / note,Video time
+TC-AUTH-01,Valid login,Admin,"Main Dashboard opens; sidebar shows ""Ahmad Faris"" and ""Administrator (IT)"".",PASS,,00:13
+TC-AUTH-02,Wrong password refused,Company,bp / chevron123 → error message; user stays on the login page.,PASS,,00:31
+TC-AUTH-03,Empty fields refused,,Both fields blank → login refused; no page content shown.,PASS,,00:41
+TC-AUTH-04,Username not case-sensitive,Company,BP / bp123 → login succeeds as Company User for BP.,PASS,"Signed in as ""BP Carbon Officer · Company User""",00:51
+TC-AUTH-05,Logout clears the session,Admin,"After logout the login page appears, a LOGOUT entry is logged, and the earlier chat history is gone after logging back in.",PASS,Chat history empty after re-login; LOGOUT logged for admin,01:06
+TC-AUTH-06,Page blocked after logout,,Opening a page URL directly after logout shows the login page instead.,PASS,Opened http://localhost:8611/Data_Centre → login page,02:00
+TC-AUTH-07,Company sees only its own data,Company,"As bp, the Company filter (Main Dashboard) and Data Centre rows list BP only.",PASS,Dashboard and Data Centre company lists: BP only,02:08
+TC-AUTH-08,Company entry locked to own company,Company,Sustainability → Data Entry → Company list: only BP can be chosen.,PASS,Options: BP,02:33
+TC-AUTH-09,Government cannot enter data,Government,"Sustainability → Data Entry shows ""Access Restricted"": data is entered by each company.",PASS,,02:48
+TC-AUTH-10,Government approval queue is view-only,Government,Pending entries are listed with no Approve/Reject buttons; note says each company verifies its own.,PASS,"1 pending entry listed, 0 Approve/Reject buttons",03:05
+TC-AUTH-11,Activity log restricted to IT,"Government, Company","""Access Restricted"": the log is managed by the IT team (for user, then bp).",PASS,Restricted for both user and bp,03:13
+TC-AUTH-12,Company cannot issue tax reports,Company,Data Centre → Export: the Carbon Tax Statement (Report) section is not shown.,PASS,"Only ""Export Data (CSV)"" is offered",03:38
+TC-DASH-01,Page loads,Admin,"KPI cards, trend charts, company section and carbon tax section display without errors.",PASS,,04:11
+TC-DASH-02,Year filter,Admin,Tick only one year: KPI cards and charts update to that year only.,PASS,Total 1315.94 → 220.07 Mt; tax over 12 months,04:22
+TC-DASH-03,Company filter,Admin,Tick only BP: charts and totals show BP only.,PASS,Company (1/5) ticked; total now 34.40 Mt,04:31
+TC-DASH-04,Scope filter,Admin,"Tick only Scope 1, then only Scope 2: totals and charts change to the selected scope.",PASS,Only Scope 1 → Scope 2 card 0.00; only Scope 2 → Scope 1 card 0.00,04:47
+TC-DASH-05,Empty filter warning,Admin,"Untick every option in one filter: a message asks to tick at least one year, company and scope; no crash.",PASS,Filters restored to all afterwards,05:02
+TC-DASH-06,Forecast shown,Admin,"Trend chart shows dashed forecast lines for the next 6 months inside a shaded ""STIRPAT forecast"" area.",PASS,"Shaded ""STIRPAT forecast"" band with forecast series",05:18
+TC-DASH-07,Forecast accuracy shown,Admin,The forecast accuracy panel displays accuracy metrics.,PASS,"Accuracy table (R², WAPE, MAPE, RMSE) shown",05:27
+TC-DASH-08,Carbon tax default,Admin,Carbon Tax (MYR/t) default is 15; tax equals total tonnes CO₂e × 15.,PASS,"1,315.94 Mt × 1,000,000 t × MYR 15 = MYR 19.74 billion (shown 19.74)",05:37
+TC-DASH-09,Change tax rate,Admin,"Enter 20, then 0, then try −5: recalculates at 20, shows MYR 0 at 0, values below 0 are not accepted.",PASS,"At 20 → ""@ MYR 20/t""; at 0 → 0.00; −5 rejected (stays at MYR 0/t)",05:44
+TC-SIM-01,Baseline,Admin,All sliders at 0: simulated equals baseline; reduction 0; tax saving MYR 0.,PASS,"Reduction 0.0%, saving MYR 0",06:21
+TC-SIM-02,Scope 1 lever,Admin,Diesel Reduction 50%: Scope 1 emissions fall; result cards show the reduction and tax saving.,PASS,"Scope 1: 1244.62 → 1120.16 Mt; Saving MYR 1,866,931,416",06:27
+TC-SIM-03,Scope 2 lever,Admin,Reset; Renewable Energy Share 30%: Scope 2 falls; Scope 1 unchanged.,PASS,"Scope 2: 71.32 → 64.19 Mt; Scope 1 stays 1,244.62 Mt",06:37
+TC-SIM-04,Combined levers,Admin,"Natural Gas 20%, Fleet EV 20%, Electricity 10%: reduction larger than any single lever; chart compares baseline and simulated.",PASS,"Singles 3.8%, 3.8%, 0.2% → combined 7.7%",06:48
+TC-SIM-05,Slider limit,Admin,Drag Overall Energy Efficiency Gain to maximum: the slider stops at 50%.,PASS,Stopped at 50% (max 50),07:15
+TC-SIM-06,AI scenario analysis,Admin,"Click ""Analyse This Scenario"": the AI recommendation refers to the changes applied and the tax saving.",PASS,Response names the levers and the tax saving,07:25
+TC-SIM-07,Reset,Admin,Move all sliders back to 0: results return to the TC-SIM-01 baseline.,PASS,"Back to reduction 0.0%, saving MYR 0",07:44
+TC-SUS-01,CO₂e preview,Company,"Scope 1, Diesel, quantity 100: preview shows kg CO₂e, tonnes and tax before submitting.",PASS,290.90 kg 0.29 tonnes · Tax ≈ MYR 4.36,08:21
+TC-SUS-02,Valid submission,Company,"A typical quantity (1,510 L diesel, Nov 2026, no entry yet): success message with source, quantity, CO₂e and tax; shows as approved.",PASS,Saved for 2026-11-12,08:34
+TC-SUS-03,Zero quantity rejected,Company,"Quantity 0 → ""Quantity must be greater than zero."" Nothing saved.",PASS,,08:49
+TC-SUS-04,Future date blocked,Company,The date picker does not allow a date after today.,PASS,Clicked the 20th: date stays 2026-11-12; later days are greyed out,08:59
+TC-SUS-05,Anomaly flag,Company,"About 10× the typical quantity (15,100 L, Apr 2026): ""Anomaly Detected — Submission Sent for Approval"" with a σ-based reason.",PASS,"Value 15,100.0 L is 414.1σ high of historical mean (1,507.1 ± 32.8 L) for 'Mobile – Diesel'. Requires approval",09:56
+TC-SUS-06,Duplicate flag,Company,Repeat TC-SUS-02 (same source and month): flagged as a duplicate and sent to the Approval Queue.,PASS,Duplicate entry: 'Mobile – Diesel' for BP in 2026-11 is already recorded.,10:12
+TC-SUS-07,Power consumption entry,Company,"Choose power consumption and submit: ""Power consumption recorded""; no CO₂e preview.",FAIL,"No CO₂e preview ✓, but flagged as a duplicate: the workbook already holds BP's total energy for every month to Dec 2026",10:29
+TC-SUS-08,Undo own entry,Company,"Select the TC-SUS-02 row in Your Recent Submissions, click Undo: a toast confirms withdrawal.",FAIL,"Entry #2278 was withdrawn, but no confirmation toast appeared; the next row (#2276) was then selected with its own Undo button",10:46
+TC-SUS-09,Pending banner,Company,Reopen Sustainability: the banner shows how many of BP's submissions await approval; no other company's entries are listed.,PASS,Banner: 3 awaiting approval; all 3 cards are BP's (Chevron's flagged entry is hidden),11:17
+TC-SUS-10,Approve,Company,Approve the TC-SUS-05 record: it leaves the queue and appears in the ledger and Data Centre.,PASS,"Entry #7 left the queue; Data Centre search ""15100"" finds 1 record",11:38
+TC-SUS-11,Reject,Company,Reject the TC-SUS-06 record: it leaves the queue and is not added to the ledger.,PASS,"Entry #8 left the queue; Data Centre search for its quantity ""1510.0"" finds 0 records",12:00
+TC-SUS-12,Activity log entries,Admin,"The login, submission, approval and rejection actions from TC-SUS-01 to 11 are listed with user and time.",PASS,"bp: LOGIN, SUBMITTED APPROVED / PENDING, WITHDRAWN, APPROVED, REJECTED",12:31
+TC-SUS-13,Log filter and export,Admin,"Filter by username bp and one action, then download: only matching rows; CSV has the same rows.",PASS,"3 rows on screen = 3 rows in CSV, all bp / SUBMITTED_PENDING",12:54
+TC-SUS-14,Log cannot be deleted,Admin,There is no delete option: logs are read-only.,PASS,No delete / remove / clear control on the page,13:16
+TC-DC-01,Table and paging,Admin,Change the Page number: 25 rows per page; pages move through the records.,PASS,"1,088 records ÷ 25 per page = 44 pages; moved to page 2",13:50
+TC-DC-02,Search,Admin,Type Diesel in the search box: only rows mentioning Diesel remain.,PASS,"Showing 7 of 1,088 records (BP's diesel entries)",14:04
+TC-DC-03,Filters,Admin,"Use the Scope, Company, Submitted By and Source filters: the table narrows to the ticked options.",PARTIAL,"Records 1,088 → 368 → 79 → 7 → 7 (Scope 1, BP, bp, Mobile – Diesel). Bug: each list opened with ""Select All"" ticked but every option shown unticked",14:20
+TC-DC-04,Empty filter message,Admin,Untick every option in one filter: a message asks to tick at least one option; no error.,PASS,Company filter restored to all afterwards,14:59
+TC-DC-05,CSV export,Admin,Export tab → Download CSV: the CSV has the same rows as the filtered table.,PASS,CSV rows 7 = Records Found 7 (filters from TC-DC-03 still applied),15:17
+TC-DC-06,PDF report,Government,"Company, year and Quarter 1 → Download Report: PDF Carbon_Tax_Statement_<company>_<year>_Q1.pdf with company details, monthly emissions, a chart and the tax invoice.",PASS,"Carbon_Tax_Statement_BP_2025_Q1.pdf: Part 1 company details, Part 2 monthly emissions + chart, Part 3 tax invoice",15:36
+TC-DC-07,No data / synthetic note,Government,A period with no records shows a no-data warning; a 2026 period shows the synthetic-data note.,PARTIAL,Synthetic note shown for 2026 ✓. No-data case not reachable: every company has records for every period (2021–2026),16:20
+TC-AI-01,Open chat,Government,Click the Chat button: the chat window opens with a message box.,PASS,,16:39
+TC-AI-02,Data question,Government,"""Which company has the highest Scope 1 emissions?"" → company and figure match the Main Dashboard.",PASS,"Answer names ExxonMobil, the top Scope 1 emitter on the dashboard",16:49
+TC-AI-03,Forecast question,Government,"""Will total emissions go up in the next six months?"" → describes the forecast trend and notes its uncertainty or the assumed 2026 data.",PASS,Describes the STIRPAT forecast and its caveats,17:06
+TC-AI-04,Off-topic question,Government,"""What is the weather today?"" → polite reply that steers back to emissions; no crash.",PASS,Polite redirect to emissions topics,17:24
+TC-AI-05,History across pages,Government,"Ask a question, switch page, reopen Chat: earlier messages are still shown.",PASS,All three earlier questions still listed after switching page,17:39
+TC-AI-06,Service unavailable,Government,"With the API key removed, sending a message gives a clear error or fallback; the rest of the app keeps working.",PASS,"Message: ""The AI chatbot is unavailable because the Groq API is not configured…""; Data Centre still works",17:58
+TC-AI-07,Chatbot keeps other companies' data private,Company,"As bp, ""What are Chevron's Scope 1 emissions?"" → no Chevron figures; the answer covers BP's data only.",PASS,No Chevron figures given (none of Chevron's yearly Scope 1 values appear),18:37

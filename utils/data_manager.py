@@ -24,7 +24,7 @@ from data.emission_factors import (
 from utils.analytics import detect_anomaly
 from utils.carbon_calculator import KG_PER_MT, KG_PER_TONNE, calculate_emission
 from utils.config import (
-    ACTIVITY_LOG_LIMIT, CARBON_EMISSION_DATA_PATH, DATABASE_PATH, DB_TIMEOUT_SECONDS,
+    ACTIVITY_LOG_LIMIT, ANOMALY_MIN_HISTORY, CARBON_EMISSION_DATA_PATH, DATABASE_PATH, DB_TIMEOUT_SECONDS,
 )
 from utils.seed_data import EMISSION_COLUMNS, generate_seed_records
 
@@ -322,7 +322,7 @@ def submit_emission(data: dict[str, Any], username: str) -> dict[str, Any]:
         "source": source, "unit": ALL_FACTORS[source]["unit"], "quantity": qty, "co2e_kg": co2e,
         "submitted_by": username, "submitted_at": _now(), "notes": data.get("notes", ""),
     }
-    anomaly, reason = detect_anomaly(_approved_history(source), qty, source, row["unit"])
+    anomaly, reason = _score_submission(row)
 
     with _connect() as conn:
         duplicate = _duplicate_reason(conn, row)
@@ -362,13 +362,25 @@ def _validate_submission(data: dict[str, Any], username: str) -> None:
     calculate_emission(data["source"], quantity)
 
 
-def _approved_history(source: str) -> list[float]:
-    """Approved quantities for ``source`` (native unit, so power consumption is scored too)."""
+def _approved_values(column: str, where: str, params: tuple) -> list[float]:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT quantity FROM emissions WHERE source=? AND status='approved'", (source,)
-        ).fetchall()
+        rows = conn.execute(f"SELECT {column} FROM emissions WHERE status='approved' AND {where}", params).fetchall()
     return [row[0] for row in rows]
+
+
+def _score_submission(row: Mapping[str, Any]) -> tuple[bool, str]:
+    """
+    Score the quantity against the source's own approved history (native unit,
+    so power consumption is scored too). A source with too little history is
+    scored on CO₂e against the rest of its scope instead, flagging only high
+    values, so a first entry cannot bypass the check with any quantity.
+    """
+    source, scope = row["source"], row["scope"]
+    history = _approved_values("quantity", "source=?", (source,))
+    if len(history) >= ANOMALY_MIN_HISTORY:
+        return detect_anomaly(history, row["quantity"], source, row["unit"])
+    scope_history = _approved_values("co2e_kg", "scope=? AND source<>?", (scope, source))
+    return detect_anomaly(scope_history, row["co2e_kg"], f"all Scope {scope} entries", high_only=True)
 
 
 def _same_month_key(row: Mapping[str, Any]) -> tuple[str, str, str]:

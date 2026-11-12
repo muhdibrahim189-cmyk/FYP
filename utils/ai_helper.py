@@ -87,7 +87,7 @@ SPK pages and charts (use these to explain what a user sees):
     2025); synthetic 2026 only supplies the drivers the forecast continues from. Scope 2 adds a
     company-specific time trend for electricity sourcing (renewable purchases, grid mix).
   - Company Heatmap & Trellis (Bar Chart & Heatmap): total emissions per company, and a
-    company × month heatmap where darker cells mean higher emissions.
+    company × month heatmap from green (low emissions) to red (high emissions).
   - Carbon Tax Analysis (Bar & Line Chart): monthly carbon tax (bars) and cumulative tax (line) in MYR.
 - What-If Simulator: sliders reduce emission levers; Simulation Results (KPI Cards & Bar Chart)
   and Baseline vs Simulation Comparison (Area Chart) show the effect; AI Scenario Analysis comments on it.

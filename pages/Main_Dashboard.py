@@ -253,14 +253,14 @@ class MainDashboard(Page):
 
         fac_pivot = fac.pivot_table(index="facility", columns="month", values="co2e_mt", fill_value=0)
         fig_heat = px.imshow(
-            fac_pivot, color_continuous_scale=px.colors.sequential.Blues,
+            fac_pivot, color_continuous_scale="RdYlGn_r",  # green = low, red = high
             title="Emission Heatmap: Company × Month (Mt CO₂e)", aspect="auto",
             labels={"y": "Company", "x": "Month", "color": "Mt CO₂e"},
         )
         apply_layout(fig_heat, 320)
         fig_heat.update_traces(hovertemplate=f"%{{y}} · %{{x}}<br>%{{z:{HOVER_FORMAT}}} Mt CO₂e<extra></extra>")
         st.plotly_chart(fig_heat, width="stretch")
-        self.observation("Darker blue cells indicate higher output. Monitor companies with sudden spikes across consecutive months.")
+        self.observation("Red cells indicate higher emissions and green cells lower. Monitor companies with sudden spikes across consecutive months.")
 
     def render_tax_section(self) -> None:
         st.write(

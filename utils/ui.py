@@ -205,7 +205,16 @@ h3 { color: var(--ct-text) !important; font-weight: 600 !important; }
     width: min(380px, calc(100vw - 2rem)); max-width: none; max-height: none !important; overflow: hidden !important;
 }
 .st-key-ct_chat_box { height: min(380px, calc(100vh - 300px)) !important; overflow-y: auto !important; }
-.st-key-ct_chat_panel .stButton > button { border-radius: 18px !important; font-size: 0.8rem; text-align: left; }
+/* Suggestion buttons: tinted from currentColor like the bubbles, since the shared
+   button tokens (white surface, dark text) would fall back to light here. */
+.st-key-ct_chat_panel .stButton > button {
+    border-radius: 18px !important; font-size: 0.8rem; text-align: left; color: inherit !important;
+    background: color-mix(in srgb, currentColor 6%, transparent) !important;
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent) !important;
+}
+.st-key-ct_chat_panel .stButton > button:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent) !important; border-color: #60a5fa !important;
+}
 
 /* Label above a dropdown filter (Page.checkbox_filter), matching Streamlit's widget labels */
 .ct-filter-label { font-size: 0.875rem; color: var(--ct-text); margin-bottom: 0.25rem; min-height: 1.5rem;

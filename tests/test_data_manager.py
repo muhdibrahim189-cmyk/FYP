@@ -108,6 +108,14 @@ class DataManagerTests(unittest.TestCase):
         ledger = data_manager.load_database_emissions()
         self.assertEqual(int(ledger["is_anomaly"].sum()), 1)
 
+    def test_source_without_history_is_scored_against_its_scope(self):
+        coal = {**VALID, "source": "Stationary – Coal"}  # no seeded history of its own
+        result = data_manager.submit_emission({**coal, "quantity": 1e25}, "user")
+        self.assertTrue(result["anomaly"])
+        self.assertIn("Scope 1", result["reason"])
+        # A small first entry is normal: only implausibly high values are held.
+        self.assertFalse(data_manager.submit_emission({**coal, "date": "2024-04-01", "quantity": 100}, "user")["anomaly"])
+
     def test_reject_leaves_ledger_unchanged(self):
         data_manager.submit_emission({**VALID, "quantity": 1_000_000}, "user")
         before = len(data_manager.load_database_emissions())

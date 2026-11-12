@@ -381,10 +381,11 @@ def dashboard_context(df: pd.DataFrame, filters: dict[str, object], change_pct: 
 
 # ── Anomaly detection ──────────────────────────────────────────────────────────
 def detect_anomaly(history: Sequence[float], value: float, source: str,
-                   unit: str = "kg CO₂e") -> tuple[bool, str]:
+                   unit: str = "kg CO₂e", high_only: bool = False) -> tuple[bool, str]:
     """
     Flag ``value`` when it lies more than ANOMALY_Z_THRESHOLD standard
     deviations from the historical mean for the same source.
+    ``high_only`` ignores values below the mean.
     Returns (is_anomaly, human-readable reason).
     """
     if len(history) < ANOMALY_MIN_HISTORY:
@@ -394,7 +395,7 @@ def detect_anomaly(history: Sequence[float], value: float, source: str,
     if std == 0:
         return False, ""
     z = abs(value - mean) / std
-    if z <= ANOMALY_Z_THRESHOLD:
+    if z <= ANOMALY_Z_THRESHOLD or (high_only and value < mean):
         return False, ""
     direction = "high" if value > mean else "low"
     reason = (

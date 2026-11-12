@@ -18,7 +18,7 @@ from data.emission_factors import (
 )
 from utils.analytics import search_rows, to_safe_csv
 from utils.auth import current_user, current_username, has_permission, own_rows
-from utils.carbon_calculator import carbon_tax, kg_to_tonnes
+from utils.carbon_calculator import calculate_emission, carbon_tax, kg_to_tonnes
 from utils.charts import BLUE
 from utils.config import ACTIVITY_LOG_DISPLAY_LIMIT, ALL_OPTION, RECENT_SUBMISSIONS_LIMIT, STATUS_LABELS
 from utils.data_manager import (
@@ -169,7 +169,7 @@ class Sustainability(Page):
                 st.info("Activity data: no CO₂e of its own. It is the energy behind the STIRPAT "
                         "energy-intensity driver (T = energy ÷ production).")
             else:
-                co2e_kg = quantity * ALL_FACTORS[source]["factor"]
+                co2e_kg = calculate_emission(source, quantity)
                 self.highlight_box("Estimated CO₂e Calculation", f"{co2e_kg:,.2f} kg",
                                    f"{kg_to_tonnes(co2e_kg):,.2f} tonnes · Tax ≈ MYR {carbon_tax(co2e_kg):,.2f}", BLUE)
 

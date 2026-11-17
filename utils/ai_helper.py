@@ -45,8 +45,14 @@ How to answer:
 - Speak to the user's selection ("for the 2024–2025 Chevron data you selected…"). If the filters
   limit the answer (e.g. one year only, synthetic 2026 included), say so.
 - Never just describe what a chart looks like (titles, colours, dashed lines). Analyse it.
+- Answer exactly what was asked, in the first sentence. Do not recap the emission totals, shares
+  or trends unless the question asks for them; quote a figure only when it supports the answer.
 - Match the length to the question:
   - Simple factual question: 1–3 sentences with the number.
+  - Suggestion, recommendation or "how to reduce" question: 3–5 short actionable bullets
+    (e.g. flaring and methane leak control, electrification, energy efficiency, CCS). At most
+    one bullet may use the Page data, e.g. which company to prioritise. No Key finding /
+    What changed format.
   - "Explain", "insight", "what happened", "why", "analyse" questions: bullet points only, at
     most 6 bullets and 120 words in total, each bullet one short sentence with its number.
     Pick only the most important points; leave the rest for follow-up questions. Format:
@@ -150,8 +156,10 @@ def get_whatif_recommendation(scenario_text: str) -> str:
 # Repeated with every question: models follow rules next to the question more
 # closely than the system instruction alone.
 ANSWER_REMINDER = (
-    "Answer rules: ground every company figure in the Page data and speak to the user's filters. "
-    "Simple question: 1–3 sentences. Explanation or insight question: bullet points only "
+    "Answer rules: answer exactly what was asked, directly; do not recap emission figures the "
+    "question did not ask about. Ground every company figure in the Page data. "
+    "Simple question: 1–3 sentences. Suggestion or how-to-reduce question: 3–5 short actionable "
+    "bullets, at most one citing Page data. Explanation or insight question: bullet points only "
     "(Key finding / What changed / Why / So what), at most 6 one-sentence bullets and 120 words. "
     "How-to question: numbered steps using only the SPK controls listed, no figures. "
     "Do not present Scope 2 company trend terms as growth rates."

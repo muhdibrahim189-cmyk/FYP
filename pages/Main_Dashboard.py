@@ -10,7 +10,7 @@ from plotly.subplots import make_subplots
 
 from data.emission_factors import CARBON_TAX_RATE_MYR
 from utils.analytics import (
-    dashboard_context, facility_summary, filter_emissions, grouped_mt, monthly_summary, period_over_period_change,
+    dashboard_context, facility_summary, filter_emissions, grouped_mt, monthly_summary, year_over_year_change,
     scope_totals, stirpat_forecast,
 )
 from utils.carbon_calculator import (
@@ -89,17 +89,19 @@ class MainDashboard(Page):
             "scopes": ", ".join(f"Scope {s}" for s in self.scope_opts),
             "carbon tax rate": f"MYR {self.tax_rate:.0f}/t",
         }
-        return dashboard_context(self.df, filters, self.change_pct, self.forecasts, self.tax_rate)
+        return dashboard_context(self.df, filters, self.change, self.forecasts, self.tax_rate)
 
     # ── KPI cards ──────────────────────────────────────────────────────────────
     @staticmethod
-    def change_delta(change_pct: float) -> tuple[str, str]:
-        """(CSS class, text) for a card's '% vs prior period' line."""
+    def change_delta(year: int, change_pct: float | None) -> tuple[str, str]:
+        """(CSS class, text) for the total card's year-on-year line."""
+        if change_pct is None:
+            return "delta-neu", f"— no {year - 1} data to compare"
         if change_pct > 0:
-            return "delta-up", f"▲ {change_pct:.1f}% vs prior period"
+            return "delta-up", f"▲ {change_pct:.1f}% vs {year - 1}"
         if change_pct < 0:
-            return "delta-down", f"▼ {abs(change_pct):.1f}% vs prior period"
-        return "delta-neu", "— 0.0% vs prior period"
+            return "delta-down", f"▼ {abs(change_pct):.1f}% vs {year - 1}"
+        return "delta-neu", f"— 0.0% vs {year - 1}"
 
     @staticmethod
     def myr_scaled(amount: float) -> tuple[str, str]:
@@ -116,8 +118,10 @@ class MainDashboard(Page):
         self.s1_share = share_pct(self.s1_t, self.total_t)
         self.s2_share = share_pct(self.s2_t, self.total_t)
 
-        self.change_pct = period_over_period_change(self.df)
-        delta_class, delta_text = self.change_delta(self.change_pct)
+        # Latest selected year vs the same months a year earlier, for the same companies and scopes.
+        pool = filter_emissions(self.df_all, facilities=self.sel_fac, scopes=self.scope_opts)
+        self.change = year_over_year_change(self.df, pool)
+        delta_class, delta_text = self.change_delta(*self.change)
 
         # Carbon tax at the sidebar rate, per year of the selected months (so partial years still compare).
         months = self.df["month"].nunique()

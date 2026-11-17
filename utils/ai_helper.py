@@ -83,7 +83,8 @@ Key facts:
 SPK pages and charts (use these to explain what a user sees):
 - Main Dashboard:
   - KPI cards: total, Scope 1 and Scope 2 emissions (Mt) for the filtered period; the total's
-    change compares the later half of the selected months with the earlier half. A fourth card,
+    change compares the latest selected year with the same months of the year before (e.g.
+    2026 vs 2025), for the same companies and scopes; 2021 has no earlier year. A fourth card,
     Carbon Tax / Year, is the selection's carbon tax at the sidebar rate per year of selected
     months (total ÷ months × 12), with the period total underneath.
   - Monthly Trend & STIRPAT Forecast (Line Chart): monthly Scope 1, Scope 2 and total emissions

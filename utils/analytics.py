@@ -104,16 +104,20 @@ def search_rows(df: pd.DataFrame, term: str) -> pd.DataFrame:
 
 
 # ── Trends & forecasting ───────────────────────────────────────────────────────
-def period_over_period_change(df: pd.DataFrame, value_column: str = "co2e_kg") -> float:
+def year_over_year_change(selected: pd.DataFrame, pool: pd.DataFrame,
+                          value_column: str = "co2e_kg") -> tuple[int, float | None]:
     """
-    Split the covered months into an earlier and a later half and return the
-    percentage change in ``value_column`` (total CO₂e by default) between them.
+    Compare the latest year in ``selected`` with the same months one year
+    earlier, taken from ``pool`` (the records for the same companies and scopes,
+    all years). Returns (latest year, % change), or (year, None) when the pool
+    has no data for those earlier months.
     """
-    months = sorted(df["month"].unique())
-    midpoint = len(months) // 2
-    prior = df.loc[df["month"].isin(months[:midpoint]), value_column].sum()
-    current = df.loc[df["month"].isin(months[midpoint:]), value_column].sum()
-    return yoy_change(current, prior)
+    year = int(selected["date"].dt.year.max())
+    months = selected.loc[selected["date"].dt.year == year, "month"].unique()
+    earlier = [str(pd.Period(m, "M") - 12) for m in months]
+    current = selected.loc[selected["month"].isin(months), value_column].sum()
+    prior = pool.loc[pool["month"].isin(earlier), value_column].sum()
+    return year, (yoy_change(current, prior) if prior else None)
 
 
 def monthly_ledger_summary(ledger: pd.DataFrame) -> pd.DataFrame:
@@ -291,7 +295,7 @@ def _pct(current: float, previous: float) -> str:
     return f"{yoy_change(current, previous):+.1f}%" if previous else "n/a"
 
 
-def dashboard_context(df: pd.DataFrame, filters: dict[str, object], change_pct: float,
+def dashboard_context(df: pd.DataFrame, filters: dict[str, object], change: tuple[int, float | None],
                       forecasts: dict[str, "StirpatResult"], tax_rate_myr: float) -> str:
     """
     Plain-text brief of exactly what the Main Dashboard shows for the user's
@@ -309,8 +313,10 @@ def dashboard_context(df: pd.DataFrame, filters: dict[str, object], change_pct: 
     total = float(totals["total"].sum())
     scope_parts = ", ".join(f"Scope {c} {totals[c].sum():,.2f} Mt = {share_pct(totals[c].sum(), total):.1f}%"
                             for c in (1, 2) if c in totals)
-    lines.append(f"KPI CARDS: total {total:,.2f} Mt ({scope_parts}); change {change_pct:+.1f}% "
-                 "(later half of the selected months vs the earlier half)")
+    year, change_pct = change
+    change_text = (f"{change_pct:+.1f}% ({year} vs the same months of {year - 1})" if change_pct is not None
+                   else f"n/a (no {year - 1} data to compare {year} with)")
+    lines.append(f"KPI CARDS: total {total:,.2f} Mt ({scope_parts}); total change {change_text}")
 
     yearly = []
     for year, row in totals.iterrows():

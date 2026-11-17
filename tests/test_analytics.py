@@ -6,7 +6,7 @@ import pandas as pd
 
 from utils.analytics import (
     dashboard_context, detect_anomaly, emissions_snapshot, filter_emissions, monthly_ledger_summary, monthly_summary,
-    period_over_period_change, scope_totals,
+    scope_totals, year_over_year_change,
     search_rows, stirpat_forecast, to_safe_csv,
 )
 
@@ -69,9 +69,17 @@ class SearchTests(unittest.TestCase):
 
 
 class TrendTests(unittest.TestCase):
-    def test_period_change_compares_halves(self):
-        # months: 2024-01, 2024-02 | 2024-03, 2025-01 -> 3000 vs 7000
-        self.assertAlmostEqual(period_over_period_change(make_records()), 133.33)
+    def test_year_change_compares_latest_year_with_same_months_a_year_earlier(self):
+        records = make_records()
+        selected = filter_emissions(records, years=[2025])
+        # 2025-01 (4000) vs 2024-01 (1000) only; 2024-02/03 are outside the selected months
+        self.assertEqual(year_over_year_change(selected, records), (2025, 300.0))
+        # pool limited to Plant (same filters as the selection): no Plant data in 2024-01
+        self.assertEqual(year_over_year_change(selected, records[records["facility"] == "Plant"]), (2025, None))
+
+    def test_year_change_uses_latest_selected_year(self):
+        records = make_records()
+        self.assertEqual(year_over_year_change(records, records), (2025, 300.0))
 
 
 
@@ -94,7 +102,8 @@ class DashboardContextTests(unittest.TestCase):
     def test_describes_the_filtered_selection_with_its_numbers(self):
         df = make_records().assign(co2e_kg=lambda f: f["co2e_kg"] * 1e9)  # 1,000–4,000 Mt
         forecast = {"Total (Scope 1 + 2)": stirpat_forecast(make_stirpat_panel(), ["A Co", "B Co"])}
-        text = dashboard_context(df, {"years": "2024, 2025", "companies": "HQ, Plant"}, 133.3, forecast, 16)
+        text = dashboard_context(df, {"years": "2024, 2025", "companies": "HQ, Plant"}, (2025, 300.0), forecast, 16)
+        self.assertIn("total change +300.0% (2025 vs the same months of 2024)", text)
         self.assertIn("CURRENT FILTERS: years: 2024, 2025; companies: HQ, Plant", text)
         self.assertIn("total 10,000.00 Mt (Scope 1 4,000.00 Mt = 40.0%", text)
         self.assertIn("2025: S1 0.00, S2 4000.00, total 4000.00 (-33.3% vs 2024)", text)
@@ -105,7 +114,7 @@ class DashboardContextTests(unittest.TestCase):
         self.assertIn("CARBON TAX at MYR 16/t: total MYR 160,000,000,000", text)
 
     def test_empty_selection(self):
-        self.assertIn("no data", dashboard_context(pd.DataFrame(), {}, 0, {}, 16))
+        self.assertIn("no data", dashboard_context(pd.DataFrame(), {}, (2025, None), {}, 16))
 
 
 class SnapshotTests(unittest.TestCase):
